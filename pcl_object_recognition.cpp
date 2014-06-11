@@ -1,6 +1,6 @@
 #include "all.hpp"
 #include "pcl_object_recognition.hpp"
-
+#include <pcl/filters/random_sample.h>
 
 
 int main( int argc, char** argv ){
@@ -110,23 +110,34 @@ int main( int argc, char** argv ){
   NormalEstimator norm;
   ClusterType cluster;
   Uniform uniform;
+  pcl::RandomSample<pcl::PointXYZRGB> random;
   Narf narf_estimator;
   Sift sift_estimator;
   
   Ransac<pcl::SampleConsensusModelSphere<pcl::PointXYZRGB>> ransac_estimator;
-  
+  Ppfe ppfe_estimator(model);
+
+
+  SetViewPoint(model);
   std::cout << "calculating model normals... "  <<std::endl;
   if(!ppfe){
     model_normals = norm.get_normals(model);
     if(save_cloud == 0)
       pcl::io::savePCDFileASCII ("model_sampled_normals.pcd", *model_normals);
     std::cout << "model size " << model->points.size() << std::endl;
-    uniform.SetSamplingSize(model_ss);
-    uniform.GetKeypoints(model, model_keypoints);
+    if (random_points){
+      random.setInputCloud(model);
+      random.setSeed(std::rand());
+      random.setSample( random_model_samples );
+      random.filter(*model_keypoints); 
+    } else{
+      uniform.SetSamplingSize(model_ss);
+      uniform.GetKeypoints(model, model_keypoints);
+    }
+  }else{
+    model_keypoints = ppfe_estimator.GetModelKeypoints();
   }
-  SetViewPoint(model);
-  Ppfe ppfe_estimator(model);
-  model_keypoints = ppfe_estimator.GetModelKeypoints();
+
 
     //  Visualization
   Visualizer visualizer;
@@ -168,6 +179,13 @@ int main( int argc, char** argv ){
         //RANSAC
         std::cout << "finding ransac keypoints..."<< std::endl;
         ransac_estimator.GetKeypoints(scene, scene_keypoints);
+
+      } else if(random_points){
+        //RANDOM
+        std::cout << "using random keypoints..."<< std::endl;
+        random.setInputCloud(scene);
+        random.setSample( random_scene_samples );
+        random.filter(*scene_keypoints); 
 
       }else{
         //UNIFORM

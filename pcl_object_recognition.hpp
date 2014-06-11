@@ -12,45 +12,42 @@ typedef std::tuple<std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::
 
 
 std::string model_filename;
-
 const Eigen::Vector4f subsampling_leaf_size (0.01f, 0.01f, 0.01f, 0.0f);
 const float normal_estimation_search_radius = 0.05f;
+const int distance = 700; //kinect cut-off distance
+
 
 //Algorithm params
-bool show_keypoints(false);
-bool show_correspondences(true);
-<<<<<<< HEAD
-bool use_hough(true);
-float model_ss(0.005);  //model sample size
-float scene_ss(0.005);  //scene sample size
+float model_ss(0.005);  
+float scene_ss(0.005);  
 float rf_rad_(0.02);
 float descr_rad(0.05);
 float cg_size(0.007);
 float cg_thresh(6.0f);
 float descriptor_distance(0.25);
-=======
-bool use_hough_(true);
-float model_ss_(0.005);  //model sample size
-float scene_ss_(0.005);  //scene sample size
-float rf_rad_(0.02);
-float descr_rad_(0.05);
-float cg_size_(0.007);
-float cg_thresh_(6.0f);
->>>>>>> eaa8251db9bb75804679faea1719ef8ea6347232
+float sac_seg_iter(1000);
+float reg_sampling_rate(10);
+float sac_seg_distance(0.05);
+float reg_clustering_threshold(0.2);
+float max_inliers(40000);
+float min_scale(0.001);
+float min_contrast(0.1f);
+float support_size(0.02);
+int n_octaves(6);
+int n_scales_per_octave (4);
+int random_scene_samples(1000);
+int random_model_samples(1000);
 bool narf(false);
-bool sift(false); //if both narf and sift are false a uniform sampling is used with radius model_ss and scene_ss
-bool fpfh(false); // if false shot descriptors are used
+bool random_points(false);
+bool sift(false); 
+bool fpfh(false); 
 bool ransac(false);
 bool ppfe(false);
 bool first(true);
-const int distance = 700; //kinect cut-off distance
- // Parameters for sift computation
-float min_scale(0.001);
-int n_octaves(6);
-int n_scales_per_octave (4);
-float min_contrast(0.1f);
-// parameters for narf computation
-float support_size(0.02);
+bool show_keypoints(false);
+bool show_correspondences(true);
+bool use_hough(true);
+
 
 void showHelp (char *filename){
   std::cout << std::endl;
@@ -61,25 +58,34 @@ void showHelp (char *filename){
   std::cout << "***************************************************************************" << std::endl << std::endl;
   std::cout << "Usage: " << filename << " model_filename.pcd [Options]" << std::endl << std::endl;
   std::cout << "Options:" << std::endl;
-  std::cout << "     -h:                     Show this help." << std::endl;
-  std::cout << "     -ppfe:                     Uses ppfe overriding all the other parameters." << std::endl;
-  std::cout << "     -show_keypoints:                     Show used keypoints." << std::endl;
-  std::cout << "     -show_correspondences:                     Show used correspondences." << std::endl;
-  std::cout << "     --descriptor_distance:   Descriptor max distance to be a match (default 0.25" << std::endl;
-  std::cout << "     --algorithm (hough|gc): Clustering algorithm used (default Hough)." << std::endl;
-  std::cout << "     --keypoints (narf|sift|uniform): Keypoints detection algorithm (default uniform)." << std::endl;
-  std::cout << "     --descriptors (shot|fpfh): Descriptor type (default shot)." << std::endl;
-  std::cout << "     --model_ss val:         Model uniform sampling radius (default 0.005)" << std::endl;
-  std::cout << "     --scene_ss val:         Scene uniform sampling radius (default 0.005)" << std::endl;
-  std::cout << "     --rf_rad val:           Hough reference frame radius (default 0.02)" << std::endl;
-  std::cout << "     --descr_rad val:        Descriptor radius (default 0.03)" << std::endl;
-  std::cout << "     --cg_size val:          Dimension of Hough's bins (default 0.007)" << std::endl;
-  std::cout << "     --cg_thresh val:        Minimum number of positive votes for a match (default 6)" << std::endl << std::endl;
-  std::cout << "     --sift_min_scale:       (default 0.001)" << std::endl;
-  std::cout << "     --sift_octaves:         (default 6)" << std::endl;
-  std::cout << "     --sift_scales_per_octave:  (default 4)" << std::endl;
-  std::cout << "     --sift_min_contrast:    (default 0.3)" << std::endl << std::endl;
-  std::cout << "     --narf_support_size:    (default 0.02)" << std::endl << std::endl;
+  std::cout << "     -h:                                Show this help." << std::endl;
+  std::cout << "     -ppfe:                             Uses ppfe overriding all the other parameters." << std::endl;
+  std::cout << "     -show_keypoints:                   Show used keypoints." << std::endl;
+  std::cout << "     -show_correspondences:             Show used correspondences." << std::endl;
+  std::cout << "     --descriptor_distance:             Descriptor max distance to be a match (default 0.25" << std::endl;
+  std::cout << "     --algorithm (hough|gc):            Clustering algorithm used (default Hough)." << std::endl;
+  std::cout << "     --keypoints (narf|sift|uniform|random):   Keypoints detection algorithm (default uniform)." << std::endl;
+  std::cout << "     --descriptors (shot|fpfh):         Descriptor type (default shot)." << std::endl;
+  std::cout << "     --model_ss val:                    Model uniform sampling radius (default 0.005)" << std::endl;
+  std::cout << "     --scene_ss val:                    Scene uniform sampling radius (default 0.005)" << std::endl;
+  std::cout << "     --rf_rad val:                      Hough reference frame radius (default 0.02)" << std::endl;
+  std::cout << "     --descr_rad val:                   Descriptor radius (default 0.03)" << std::endl;
+  std::cout << "     --cg_size val:                     Dimension of Hough's bins (default 0.007)" << std::endl;
+  std::cout << "     --cg_thresh val:                   Minimum number of positive votes for a match (default 6)" << std::endl;
+  std::cout << "     --sift_min_scale:                  (default 0.001)" << std::endl;
+  std::cout << "     --sift_octaves:                    (default 6)" << std::endl;
+  std::cout << "     --sift_scales_per_octave:          (default 4)" << std::endl;
+  std::cout << "     --sift_min_contrast:               (default 0.3)" << std::endl << std::endl;
+  std::cout << "     --narf_support_size:               (default 0.02)" << std::endl << std::endl;
+  std::cout << "     --sac_seg_iter:                    max iteration number of the ransac segmentation (default 1000)" << std::endl;
+  std::cout << "     --reg_clustering_threshold         registration position clustering threshold (default 0.2)"  << std::endl;
+  std::cout << "     --reg_sampling_rate                ppfe registration sampling rate (default 10)"  << std::endl;
+  std::cout << "     --sac_seg_distance                 ransac segmentation distance threshold (default 0.05)"  << std::endl;
+  std::cout << "     --max_inliers                      max number of inliers (default 40000)"  << std::endl;
+  std::cout << "     --random_scene_samples                   number of random samples in the scene (default 1000) "   << std::endl;
+  std::cout << "     --random_model_samples                   number of random samples in the model (default 1000) "   << std::endl;
+
+
  
 
 }
@@ -109,7 +115,7 @@ void parseCommandLine (int argc, char *argv[]){
     show_keypoints = true;
   if (pcl::console::find_switch (argc, argv, "-show_correspondences"))
     show_correspondences = true;
-
+  
   if (pcl::console::find_switch (argc, argv, "-ppfe"))
     ppfe = true;
 
@@ -128,13 +134,15 @@ void parseCommandLine (int argc, char *argv[]){
 
   std::string used_keypoints;
   if (pcl::console::parse_argument (argc, argv, "--keypoints", used_keypoints) != -1){
-    if (used_keypoints.compare ("narf") == 0)
+    if (used_keypoints.compare("narf") == 0)
       narf = true;
-    else if (used_keypoints.compare ("sift") == 0)
+    else if (used_keypoints.compare("sift") == 0)
       sift = true;
-    else if(used_keypoints.compare ("ransac") == 0)
+    else if(used_keypoints.compare("ransac") == 0)
       ransac = true;
-    else if(used_keypoints.compare ("uniform") == 0)
+    else if(used_keypoints.compare("random") == 0)
+      random_points = true;
+    else if(used_keypoints.compare("uniform") == 0)
       std::cout << "Using uniform sampling.\n";
     
   }
@@ -166,35 +174,66 @@ void parseCommandLine (int argc, char *argv[]){
   pcl::console::parse_argument (argc, argv, "--sift_min_contrast", min_contrast);
   pcl::console::parse_argument (argc, argv, "--narf_support_size", support_size);
   pcl::console::parse_argument (argc, argv, "--descriptor_distance", descriptor_distance);
+  pcl::console::parse_argument (argc, argv, "--max_inliers", max_inliers);
+  pcl::console::parse_argument (argc, argv, "--sac_seg_iter", sac_seg_iter);
+  pcl::console::parse_argument (argc, argv, "--reg_clustering_threshold", reg_clustering_threshold);
+  pcl::console::parse_argument (argc, argv, "--reg_sampling_rate", reg_sampling_rate);
+  pcl::console::parse_argument (argc, argv, "--sac_seg_distance", sac_seg_distance);
+  pcl::console::parse_argument (argc, argv, "--random_model_samples", random_model_samples);
+  pcl::console::parse_argument (argc, argv, "--random_scene_samples", random_scene_samples);
+
 }
+
+void showKeyHelp(){
+
+std::cout << "Press q to increase the Hough thresh by 1" << std::endl;
+std::cout << "Press w to decrease the Hough thresh by 1" << std::endl;
+std::cout << "Press a to increase Hough bin size by 0.001" << std::endl;
+std::cout << "Press s to decrease Hough bin size by 0.001" << std::endl;
+std::cout << "Press z to increase the scene sampling size" << std::endl;
+std::cout << "Press x to decrease the scene sampling size" << std::endl;
+std::cout << "Press p to print the actual parameters" << std::endl;
+
+
+}
+
+
 
 void keyboardEventOccurred(const pcl::visualization::KeyboardEvent &event){
   std::string pressed;
   pressed = event.getKeySym ();
   if(event.keyDown()){
-    if(pressed == "w"){
+    if(pressed == "q"){
       cg_thresh++;
       std::cout << "\tcg_thresh increased to " << cg_thresh << std::endl;
-    } else if(pressed == "e"){
+    } else if(pressed == "w"){
       cg_thresh--;
-      std::cout << "\tcg_thresh lowered to " << cg_thresh << std::endl;
+      std::cout << "\tcg_thresh decreased to " << cg_thresh << std::endl;
     } else if(pressed == "a"){
       cg_size += 0.001;
       std::cout << "\tcg_size increased to " << cg_size << std::endl;
     } else if(pressed == "s"){
       cg_size -= 0.001;
-      std::cout << "\tcg_size lowered to " << cg_size << std::endl;
+      std::cout << "\tcg_size decreased to " << cg_size << std::endl;
     } else if(pressed == "z"){
       scene_ss += 0.001;
       std::cout << "\tscene sampling size increased to " << scene_ss << std::endl;
     } else if(pressed == "x"){
       scene_ss -= 0.001;
-      std::cout << "\tscene sampling size lowered to " << scene_ss << std::endl;
+      std::cout << "\tscene sampling size decreased to " << scene_ss << std::endl;
     } else if(pressed == "p"){
       std::cout << "Parameters:" <<std::endl;
       std::cout << "cg_thresh " << cg_thresh << std::endl;
       std::cout << "cg_size " << cg_size << std::endl;
       std::cout << "sampling size " << scene_ss << std::endl;
+    } else if(pressed == "e"){
+      sac_seg_distance += 0.001;
+      std::cout << "\t sac segmentation distance increased to " << sac_seg_distance <<std::endl;
+    } else if(pressed == "e"){
+      sac_seg_distance -= 0.001;
+      std::cout << "\t sac segmentation distance decreased to " << sac_seg_distance <<std::endl;
+    } else if(pressed == "h"){
+      showKeyHelp();
     }
   }
 }
@@ -371,11 +410,10 @@ public:
     seg.setOptimizeCoefficients (true);
     seg.setModelType (pcl::SACMODEL_PLANE);
     seg.setMethodType (pcl::SAC_RANSAC);
-    seg.setMaxIterations (1000);
-    seg.setDistanceThreshold (0.05);
+    seg.setMaxIterations (sac_seg_iter);
     extract.setNegative (true);
-    ppf_registration.setSceneReferencePointSamplingRate (10); //10
-    ppf_registration.setPositionClusteringThreshold (0.2f); //0.2f
+    ppf_registration.setSceneReferencePointSamplingRate (reg_sampling_rate); //10
+    ppf_registration.setPositionClusteringThreshold (reg_clustering_threshold); //0.2f
     ppf_registration.setRotationClusteringThreshold (30.0f / 180.0f * float (M_PI));
     cloud_model_input = subsampleAndCalculateNormals (model_xyz_);
     pcl::PPFEstimation<pcl::PointNormal, pcl::PointNormal, pcl::PPFSignature> ppf_estimator;
@@ -389,13 +427,14 @@ public:
 
 
   ClusterType GetCluster(pcl::PointCloud<PointType>::Ptr scene){
+    seg.setDistanceThreshold (sac_seg_distance);
     copyPointCloud(*scene, *cloud_scene);
     nr_points = unsigned (cloud_scene->points.size ());
     while (cloud_scene->points.size () > 0.3 * nr_points){
       seg.setInputCloud (cloud_scene);
       seg.segment (*inliers, *coefficients);
       PCL_INFO ("Plane inliers: %u\n", inliers->indices.size ());
-      if (inliers->indices.size () < 40000) 
+      if (inliers->indices.size () < max_inliers) 
         break;
       extract.setInputCloud (cloud_scene);
       extract.setIndices (inliers);
@@ -705,8 +744,9 @@ public:
       clean = true;
       to_remove.clear();
     }
-
     //SetViewPoint(scene);
+    pcl::transformPointCloud (*model, *off_scene_model_, Eigen::Vector3f (-1,0,0), Eigen::Quaternionf (1, 0, 0, 0));
+
     if(iter == 0){
       viewer_.addPointCloud (off_scene_model_,  "off_scene_model_");
       viewer_.addPointCloud (scene, "scene_cloud");
@@ -714,11 +754,10 @@ public:
     else
       viewer_.updatePointCloud (scene, "scene_cloud");
 
-    pcl::transformPointCloud (*model, *off_scene_model_, Eigen::Vector3f (-1,0,0), Eigen::Quaternionf (1, 0, 0, 0));
-    
+    pcl::transformPointCloud (*model_keypoints, *off_scene_model_keypoints_, Eigen::Vector3f (-1,0,0), Eigen::Quaternionf (1, 0, 0, 0));
 
+    
     if (show_keypoints){
-      pcl::transformPointCloud (*model_keypoints, *off_scene_model_keypoints_, Eigen::Vector3f (-1,0,0), Eigen::Quaternionf (1, 0, 0, 0));
       pcl::visualization::PointCloudColorHandlerCustom<PointType> scene_keypoints_color_handler (scene_keypoints, 0, 0, 255);
       SetViewPoint(scene_keypoints);
       if(iter == 0)
@@ -735,7 +774,7 @@ public:
         viewer_.updatePointCloud (off_scene_model_keypoints_, off_scene_model_keypoints__color_handler, "off_scene_model_keypoints_");
       viewer_.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 5, "off_scene_model_keypoints_");
     }
-    
+
     for (size_t i = 0; i < std::get<0>(cluster).size (); ++i){
       clean = false;
       pcl::PointCloud<PointType>::Ptr rotated_model (new pcl::PointCloud<PointType> ());
@@ -751,7 +790,7 @@ public:
 
       //  We are drawing a line for each pair of clustered correspondences found between the model and the scene
       if (show_correspondences){
-        for (size_t j = 0; j < std::get<1>(cluster)[i].size (); ++j){
+        for (size_t j = 0; j < std::get<1>(cluster)[i].size(); ++j){
           ss_line << "correspondence_line" << i << "_" << j << "_" << iter;
           float model_x = off_scene_model_keypoints_->at (std::get<1>(cluster)[i][j].index_query).x;
           float model_y = off_scene_model_keypoints_->at (std::get<1>(cluster)[i][j].index_query).y;
