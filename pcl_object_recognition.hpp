@@ -33,6 +33,7 @@ float max_inliers(40000);
 float min_scale(0.001);
 float min_contrast(0.1f);
 float support_size(0.02);
+float filter_intensity(0.02);
 int n_octaves(6);
 int n_scales_per_octave (4);
 int random_scene_samples(1000);
@@ -47,6 +48,8 @@ bool first(true);
 bool show_keypoints(false);
 bool show_correspondences(true);
 bool use_hough(true);
+bool to_filter(false);
+
 
 
 void showHelp (char *filename){
@@ -62,7 +65,9 @@ void showHelp (char *filename){
   std::cout << "     -ppfe:                             Uses ppfe overriding all the other parameters." << std::endl;
   std::cout << "     -show_keypoints:                   Show used keypoints." << std::endl;
   std::cout << "     -show_correspondences:             Show used correspondences." << std::endl;
-  std::cout << "     --descriptor_distance:             Descriptor max distance to be a match (default 0.25" << std::endl;
+  std::cout << "     -filter:                           Filter the cloud by color leaving only the points which are close to the model color." << std::endl;
+  std::cout << "     --filter_intensity:                Max distance between colors normalized between 0 and 1 (default 0.02)" << std::endl;
+  std::cout << "     --descriptor_distance:             Descriptor max distance to be a match (default 0.25)" << std::endl;
   std::cout << "     --algorithm (hough|gc):            Clustering algorithm used (default Hough)." << std::endl;
   std::cout << "     --keypoints (narf|sift|uniform|random):   Keypoints detection algorithm (default uniform)." << std::endl;
   std::cout << "     --descriptors (shot|fpfh):         Descriptor type (default shot)." << std::endl;
@@ -84,9 +89,6 @@ void showHelp (char *filename){
   std::cout << "     --max_inliers                      max number of inliers (default 40000)"  << std::endl;
   std::cout << "     --random_scene_samples                   number of random samples in the scene (default 1000) "   << std::endl;
   std::cout << "     --random_model_samples                   number of random samples in the model (default 1000) "   << std::endl;
-
-
- 
 
 }
 
@@ -115,7 +117,8 @@ void parseCommandLine (int argc, char *argv[]){
     show_keypoints = true;
   if (pcl::console::find_switch (argc, argv, "-show_correspondences"))
     show_correspondences = true;
-  
+  if (pcl::console::find_switch (argc, argv, "-filter"))
+    to_filter = true;
   if (pcl::console::find_switch (argc, argv, "-ppfe"))
     ppfe = true;
 
@@ -181,6 +184,8 @@ void parseCommandLine (int argc, char *argv[]){
   pcl::console::parse_argument (argc, argv, "--sac_seg_distance", sac_seg_distance);
   pcl::console::parse_argument (argc, argv, "--random_model_samples", random_model_samples);
   pcl::console::parse_argument (argc, argv, "--random_scene_samples", random_scene_samples);
+  pcl::console::parse_argument (argc, argv, "--filter_intensity", filter_intensity);
+
 
 }
 
@@ -237,6 +242,95 @@ void keyboardEventOccurred(const pcl::visualization::KeyboardEvent &event){
     }
   }
 }
+
+class ColorSampling{
+public:
+  ColorSampling(float tollerance_range): tollerance_range_(tollerance_range) {
+    clear();
+    rgb2yuv << 0.229,    0.587,   0.114,
+     -0.14713, -0.28886, 0.436,
+      0.615,   -0.51499, -0.10001;
+  }
+
+  void clear(){
+    min_u_ = 1, max_u_ = 0;
+    min_v_ = 1, max_v_ = 0;
+
+    avg_u_  = 0, avg_v_ = 0;
+    avg_dist_ = 0;
+  }
+
+  void addCloud(const pcl::PointCloud<pcl::PointXYZRGB> &cloud){
+    clear();
+    float u, v;
+    for(auto point : cloud.points){
+      RGBtoYUV(point, u, v);
+      if(u < min_u_)
+        min_u_ = u;
+      else if(u > max_u_)
+        max_u_ = u;
+
+      if(v < min_v_)
+        min_v_ = v;
+      else if(v > max_v_)
+        max_v_ = v;
+
+      avg_u_ += u;
+      avg_v_ += v;
+    }
+    avg_u_ = avg_u_ / cloud.points.size();
+    avg_v_ = avg_v_ / cloud.points.size();
+  }
+
+  void filterPointCloud(const pcl::PointCloud<pcl::PointXYZRGB> &in_cloud, pcl::PointCloud<pcl::PointXYZRGB> &out_cloud){
+  pcl::PointCloud<pcl::PointXYZRGB> cloud;
+
+  for(auto point : in_cloud.points){
+    if(!toFilter(point))
+    cloud.points.push_back(point);
+  }
+  out_cloud = cloud;
+  std::cout << "Point number: \n\t Original point cloud: " <<
+  in_cloud.points.size()
+   << " \n\t Filtered point cloud: " << cloud.points.size() << std::endl;
+  }
+
+  void printColorInfo(){
+    std::cout << "U min: " << min_u_ << " max: " << max_u_ << std::endl;
+    std::cout << "V min: " << min_v_ << " max: " << max_v_ << std::endl;
+    std::cout << "avg U: " << avg_u_ << " V: " << avg_v_ << std::endl;
+
+    std::cout << rgb2yuv << std::endl;
+  }
+
+private:
+  Eigen::Matrix3f rgb2yuv;
+  float min_u_, max_u_;
+  float min_v_, max_v_;
+  float avg_u_, avg_v_;
+  float avg_dist_;
+  float tollerance_range_;
+
+  bool toFilter(const pcl::PointXYZRGB &point){
+    float u, v;
+    RGBtoYUV(point, u, v);
+    float distance = sqrt(pow(u - avg_u_, 2) + pow(v - avg_v_, 2));
+    if(distance < tollerance_range_)
+    return false;
+    else
+    return true;
+  }
+
+  void RGBtoYUV(const pcl::PointXYZRGB &point, float &u, float &v){
+    Eigen::Vector3f rgb((float)point.r / 255, (float)point.g / 255,
+    (float)point.b / 255);
+    Eigen::Vector3f yuv = rgb2yuv * rgb;
+    u = yuv.y();
+    v = yuv.z();
+  }
+};
+
+
 
 pcl::PointCloud<pcl::PointNormal>::Ptr subsampleAndCalculateNormals (pcl::PointCloud<pcl::PointXYZ>::Ptr cloud){
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_subsampled (new pcl::PointCloud<pcl::PointXYZ> ());
@@ -748,6 +842,7 @@ public:
     pcl::transformPointCloud (*model, *off_scene_model_, Eigen::Vector3f (-1,0,0), Eigen::Quaternionf (1, 0, 0, 0));
 
     if(iter == 0){
+      viewer_.setBackgroundColor (255, 255, 255);
       viewer_.addPointCloud (off_scene_model_,  "off_scene_model_");
       viewer_.addPointCloud (scene, "scene_cloud");
     }

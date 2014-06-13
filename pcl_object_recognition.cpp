@@ -82,30 +82,7 @@ int main( int argc, char** argv ){
     std::cout << "Error loading model cloud." << std::endl;
     return (-1);
   }  
-   /*
-  
-  //pcl::removeNaNFromPointCloud(*model,*model, indexes);
-
-
-  DownSampler sampler;
-  sampler.DownSample(model);
-  std::cout << "model dimension after sampling "  <<model->points.size() <<std::endl;
-
-  std::cout << "cloud scene dimensions " << scene->height<< " x " << scene->width << " number of points " << scene->points.size() <<std::endl;
-  if(save_cloud == 0)
-    pcl::io::savePCDFileASCII ("scene.pcd", *scene);
-
-  //pcl::removeNaNFromPointCloud(*scene,*scene, indexes2);
-  sampler.DownSample(model);
-  std::cout << "cloud scene dimension after sampling "  <<scene->points.size() <<std::endl;
-  if(save_cloud == 0)
-    pcl::io::savePCDFileASCII ("scene_sampled.pcd", *scene);
-
-*/
-
-  
-
-  
+   
   Openni2pcl<pcl::PointXYZRGB> grabber;
   NormalEstimator norm;
   ClusterType cluster;
@@ -116,6 +93,9 @@ int main( int argc, char** argv ){
   
   Ransac<pcl::SampleConsensusModelSphere<pcl::PointXYZRGB>> ransac_estimator;
   Ppfe ppfe_estimator(model);
+  ColorSampling filter(filter_intensity);
+  if(to_filter)
+    filter.addCloud(*model);
 
 
   SetViewPoint(model);
@@ -138,7 +118,7 @@ int main( int argc, char** argv ){
     model_keypoints = ppfe_estimator.GetModelKeypoints();
   }
 
-
+  
     //  Visualization
   Visualizer visualizer;
   while (!visualizer.viewer_.wasStopped ()){
@@ -149,10 +129,12 @@ int main( int argc, char** argv ){
     scene = grabber.get_point_cloud_openni2(colorf, irf, distance, true);
     if(save_cloud == 0)
       pcl::io::savePCDFileASCII ("good_scene.pcd", *scene);
+    if(to_filter)
+      filter.filterPointCloud(*scene, *scene);
     SetViewPoint(scene);
-    //  Compute Normals
 
-    
+
+    //  Compute Normals
     std::cout << "calculating scene normals... "  <<std::endl;
     scene_normals = norm.get_normals(scene);
     if(save_cloud == 0)
