@@ -11,7 +11,6 @@ typedef pcl::ReferenceFrame RFType;
 typedef std::tuple<std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f> >, std::vector<pcl::Correspondences>> ClusterType;
 
 
-std::string model_filename;
 const Eigen::Vector4f subsampling_leaf_size (0.01f, 0.01f, 0.01f, 0.0f);
 const float normal_estimation_search_radius = 0.05f;
 const int distance = 700; //kinect cut-off distance
@@ -49,8 +48,8 @@ bool show_keypoints(false);
 bool show_correspondences(true);
 bool use_hough(true);
 bool to_filter(false);
-
-
+bool show_filtered(false);
+bool remove_outliers(false);
 
 void showHelp (char *filename){
   std::cout << std::endl;
@@ -59,13 +58,14 @@ void showHelp (char *filename){
   std::cout << "*             Real time object recognition - Usage Guide                  *" << std::endl;
   std::cout << "*                                                                         *" << std::endl;
   std::cout << "***************************************************************************" << std::endl << std::endl;
-  std::cout << "Usage: " << filename << " model_filename.pcd [Options]" << std::endl << std::endl;
+  std::cout << "Usage: " << filename << " model_filename_list [Options]" << std::endl << std::endl;
   std::cout << "Options:" << std::endl;
   std::cout << "     -h:                                Show this help." << std::endl;
   std::cout << "     -ppfe:                             Uses ppfe overriding all the other parameters." << std::endl;
   std::cout << "     -show_keypoints:                   Show used keypoints." << std::endl;
   std::cout << "     -show_correspondences:             Show used correspondences." << std::endl;
   std::cout << "     -filter:                           Filter the cloud by color leaving only the points which are close to the model color." << std::endl;
+  std::cout << "     -remove_outliers:                  Remove ouliers from the scene." << std::endl;
   std::cout << "     --filter_intensity:                Max distance between colors normalized between 0 and 1 (default 0.02)" << std::endl;
   std::cout << "     --descriptor_distance:             Descriptor max distance to be a match (default 0.25)" << std::endl;
   std::cout << "     --algorithm (hough|gc):            Clustering algorithm used (default Hough)." << std::endl;
@@ -100,18 +100,6 @@ void parseCommandLine (int argc, char *argv[]){
     exit (0);
   }
 
-  //Model & scene filenames
-  std::vector<int> filenames;
-  filenames = pcl::console::parse_file_extension_argument (argc, argv, ".pcd");
-  if (filenames.size () != 1)
-  {
-    std::cout << "Filenames missing.\n";
-    showHelp (argv[0]);
-    exit (-1);
-  }
-
-  model_filename = argv[filenames[0]];
-
   //Program behavior
   if (pcl::console::find_switch (argc, argv, "-show_keypoints"))
     show_keypoints = true;
@@ -121,6 +109,8 @@ void parseCommandLine (int argc, char *argv[]){
     to_filter = true;
   if (pcl::console::find_switch (argc, argv, "-ppfe"))
     ppfe = true;
+  if (pcl::console::find_switch (argc, argv, "-remove_outliers"))
+    remove_outliers = true;
 
   std::string used_algorithm;
   if (pcl::console::parse_argument (argc, argv, "--algorithm", used_algorithm) != -1){
@@ -187,19 +177,19 @@ void parseCommandLine (int argc, char *argv[]){
   pcl::console::parse_argument (argc, argv, "--filter_intensity", filter_intensity);
 
 
+
 }
 
 void showKeyHelp(){
 
-std::cout << "Press q to increase the Hough thresh by 1" << std::endl;
-std::cout << "Press w to decrease the Hough thresh by 1" << std::endl;
-std::cout << "Press a to increase Hough bin size by 0.001" << std::endl;
-std::cout << "Press s to decrease Hough bin size by 0.001" << std::endl;
-std::cout << "Press z to increase the scene sampling size" << std::endl;
-std::cout << "Press x to decrease the scene sampling size" << std::endl;
-std::cout << "Press p to print the actual parameters" << std::endl;
-
-
+  std::cout << "Press q to increase the Hough thresh by 1" << std::endl;
+  std::cout << "Press w to decrease the Hough thresh by 1" << std::endl;
+  std::cout << "Press a to increase Hough bin size by 0.001" << std::endl;
+  std::cout << "Press s to decrease Hough bin size by 0.001" << std::endl;
+  std::cout << "Press z to increase the scene sampling size" << std::endl;
+  std::cout << "Press x to decrease the scene sampling size" << std::endl;
+  std::cout << "Press p to print the actual parameters" << std::endl;
+  std::cout << "Press k to toggle filtered mode" << std::endl;
 }
 
 
@@ -237,9 +227,62 @@ void keyboardEventOccurred(const pcl::visualization::KeyboardEvent &event){
     } else if(pressed == "e"){
       sac_seg_distance -= 0.001;
       std::cout << "\t sac segmentation distance decreased to " << sac_seg_distance <<std::endl;
-    } else if(pressed == "h"){
+    } else if(pressed == "k"){
+      show_filtered = !show_filtered;
+    }
+    else if(pressed == "h"){
       showKeyHelp();
     }
+  }
+}
+
+void SetViewPoint(pcl::PointCloud<PointType>::Ptr cloud){
+
+    cloud->sensor_origin_.setZero();
+    cloud->sensor_orientation_.w () = 0.0;
+    cloud->sensor_orientation_.x () = 1.0;
+    cloud->sensor_orientation_.y () = 0.0;
+    cloud->sensor_orientation_.z () = 0.0;
+}
+
+std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> ReadModels (char** argv) {
+  pcl::PCDReader reader;
+
+  std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> cloud_models;
+
+  ifstream pcd_file_list (argv[1]);
+  while (!pcd_file_list.eof())
+  {
+    char str[512];
+    pcd_file_list.getline (str, 512);
+    if(std::strlen(str) > 2 ){
+      pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB> ());
+      reader.read (str, *cloud);
+      SetViewPoint(cloud);
+      cloud_models.push_back (cloud);
+      PCL_INFO ("Model read: %s\n", str);
+    }
+  }
+  std::cout << "all loaded" << std::endl;
+  return std::move(cloud_models);
+}
+
+void PrintTransformation(ClusterType cluster){
+  for (size_t i = 0; i < std::get<0>(cluster).size (); ++i)
+  {
+    std::cout << "\n    Instance " << i + 1 << ":" << std::endl;
+    std::cout << "        Correspondences belonging to this instance: " << std::get<1>(cluster)[i].size () << std::endl;
+
+    // Print the rotation matrix and translation vector
+    Eigen::Matrix3f rotation = std::get<0>(cluster)[i].block<3,3>(0, 0);
+    Eigen::Vector3f translation = std::get<0>(cluster)[i].block<3,1>(0, 3);
+
+    printf ("\n");
+    printf ("            | %6.3f %6.3f %6.3f | \n", rotation (0,0), rotation (0,1), rotation (0,2));
+    printf ("        R = | %6.3f %6.3f %6.3f | \n", rotation (1,0), rotation (1,1), rotation (1,2));
+    printf ("            | %6.3f %6.3f %6.3f | \n", rotation (2,0), rotation (2,1), rotation (2,2));
+    printf ("\n");
+    printf ("        t = < %0.3f, %0.3f, %0.3f >\n", translation (0), translation (1), translation (2));
   }
 }
 
@@ -248,16 +291,12 @@ public:
   ColorSampling(float tollerance_range): tollerance_range_(tollerance_range) {
     clear();
     rgb2yuv << 0.229,    0.587,   0.114,
-     -0.14713, -0.28886, 0.436,
-      0.615,   -0.51499, -0.10001;
+              -0.14713, -0.28886, 0.436,
+               0.615,   -0.51499, -0.10001;
   }
 
   void clear(){
-    min_u_ = 1, max_u_ = 0;
-    min_v_ = 1, max_v_ = 0;
-
     avg_u_  = 0, avg_v_ = 0;
-    avg_dist_ = 0;
   }
 
   void addCloud(const pcl::PointCloud<pcl::PointXYZRGB> &cloud){
@@ -265,16 +304,6 @@ public:
     float u, v;
     for(auto point : cloud.points){
       RGBtoYUV(point, u, v);
-      if(u < min_u_)
-        min_u_ = u;
-      else if(u > max_u_)
-        max_u_ = u;
-
-      if(v < min_v_)
-        min_v_ = v;
-      else if(v > max_v_)
-        max_v_ = v;
-
       avg_u_ += u;
       avg_v_ += v;
     }
@@ -283,32 +312,24 @@ public:
   }
 
   void filterPointCloud(const pcl::PointCloud<pcl::PointXYZRGB> &in_cloud, pcl::PointCloud<pcl::PointXYZRGB> &out_cloud){
-  pcl::PointCloud<pcl::PointXYZRGB> cloud;
+    pcl::PointCloud<pcl::PointXYZRGB> cloud;
+    int points = in_cloud.points.size();
 
-  for(auto point : in_cloud.points){
-    if(!toFilter(point))
-    cloud.points.push_back(point);
-  }
-  out_cloud = cloud;
-  std::cout << "Point number: \n\t Original point cloud: " <<
-  in_cloud.points.size()
-   << " \n\t Filtered point cloud: " << cloud.points.size() << std::endl;
+    for(auto point : in_cloud.points){
+      if(!toFilter(point))
+      cloud.points.push_back(point);
+    }
+    out_cloud = cloud;
+    std::cout << "Point number: \n\t Original point cloud: " <<points << " \n\t Filtered point cloud: " << cloud.points.size() << std::endl;
   }
 
   void printColorInfo(){
-    std::cout << "U min: " << min_u_ << " max: " << max_u_ << std::endl;
-    std::cout << "V min: " << min_v_ << " max: " << max_v_ << std::endl;
     std::cout << "avg U: " << avg_u_ << " V: " << avg_v_ << std::endl;
-
-    std::cout << rgb2yuv << std::endl;
   }
 
-private:
   Eigen::Matrix3f rgb2yuv;
-  float min_u_, max_u_;
-  float min_v_, max_v_;
+
   float avg_u_, avg_v_;
-  float avg_dist_;
   float tollerance_range_;
 
   bool toFilter(const pcl::PointXYZRGB &point){
@@ -316,14 +337,13 @@ private:
     RGBtoYUV(point, u, v);
     float distance = sqrt(pow(u - avg_u_, 2) + pow(v - avg_v_, 2));
     if(distance < tollerance_range_)
-    return false;
+      return false;
     else
-    return true;
+      return true;
   }
 
   void RGBtoYUV(const pcl::PointXYZRGB &point, float &u, float &v){
-    Eigen::Vector3f rgb((float)point.r / 255, (float)point.g / 255,
-    (float)point.b / 255);
+    Eigen::Vector3f rgb((float)point.r / 255, (float)point.g / 255, (float)point.b / 255);
     Eigen::Vector3f yuv = rgb2yuv * rgb;
     u = yuv.y();
     v = yuv.z();
@@ -353,36 +373,6 @@ pcl::PointCloud<pcl::PointNormal>::Ptr subsampleAndCalculateNormals (pcl::PointC
   PCL_INFO ("Cloud dimensions before / after subsampling: %u / %u\n", cloud->points.size (), cloud_subsampled->points.size ());
   return cloud_subsampled_with_normals;
 }
-
-void SetViewPoint(pcl::PointCloud<PointType>::Ptr cloud){
-
-    cloud->sensor_origin_.setZero();
-    cloud->sensor_orientation_.w () = 0.0;
-    cloud->sensor_orientation_.x () = 1.0;
-    cloud->sensor_orientation_.y () = 0.0;
-    cloud->sensor_orientation_.z () = 0.0;
-}
-
-void PrintTransformation(ClusterType cluster){
-  for (size_t i = 0; i < std::get<0>(cluster).size (); ++i)
-  {
-    std::cout << "\n    Instance " << i + 1 << ":" << std::endl;
-    std::cout << "        Correspondences belonging to this instance: " << std::get<1>(cluster)[i].size () << std::endl;
-
-    // Print the rotation matrix and translation vector
-    Eigen::Matrix3f rotation = std::get<0>(cluster)[i].block<3,3>(0, 0);
-    Eigen::Vector3f translation = std::get<0>(cluster)[i].block<3,1>(0, 3);
-
-    printf ("\n");
-    printf ("            | %6.3f %6.3f %6.3f | \n", rotation (0,0), rotation (0,1), rotation (0,2));
-    printf ("        R = | %6.3f %6.3f %6.3f | \n", rotation (1,0), rotation (1,1), rotation (1,2));
-    printf ("            | %6.3f %6.3f %6.3f | \n", rotation (2,0), rotation (2,1), rotation (2,2));
-    printf ("\n");
-    printf ("        t = < %0.3f, %0.3f, %0.3f >\n", translation (0), translation (1), translation (2));
-  }
-}
-
-
 
 template <class T, class Estimator>
 class KeyDes{
@@ -565,6 +555,64 @@ public:
 
 };
 
+class OpenniStreamer {
+public:
+  openni::Device device_;        // Software object for the physical device i.e.  
+  openni::VideoStream ir_;       // IR VideoStream Class Object
+  openni::VideoStream color_;    // Color VideoStream Class Object
+  openni::Status rc_;
+
+  OpenniStreamer () {
+    rc_ = openni::OpenNI::initialize(); // Initialize OpenNI 
+    if(rc_ != openni::STATUS_OK){ 
+      std::cout << "OpenNI initialization failed" << std::endl; 
+      openni::OpenNI::shutdown(); 
+    } 
+    else 
+      std::cout << "OpenNI initialization successful" << std::endl; 
+
+    rc_ = device_.open(openni::ANY_DEVICE); 
+    if(rc_ != openni::STATUS_OK){ 
+      std::cout << "Device initialization failed" << std::endl; 
+      device_.close(); 
+    }
+    rc_ = ir_.create(device_, openni::SENSOR_DEPTH);    // Create the VideoStream for IR
+    
+    if(rc_ != openni::STATUS_OK){
+        std::cout << "Ir sensor creation failed" << std::endl;
+        ir_.destroy();
+    }
+    else
+        std::cout << "Ir sensor creation successful" << std::endl;
+    rc_ = ir_.start();                      // Start the IR VideoStream
+    //ir.setMirroringEnabled(TRUE); 
+    if(rc_ != openni::STATUS_OK){
+        std::cout << "Ir activation failed" << std::endl;
+        ir_.destroy();
+    }
+    else
+        std::cout << "Ir activation successful" << std::endl;
+    device_.setImageRegistrationMode(openni::IMAGE_REGISTRATION_DEPTH_TO_COLOR );
+
+    //ir.setImageRegistrationMode(ONI_IMAGE_REGISTRATION_DEPTH_TO_COLOR);
+    rc_ = color_.create(device_, openni::SENSOR_COLOR);    // Create the VideoStream for Color
+
+    if(rc_ != openni::STATUS_OK){
+        std::cout << "Color sensor creation failed" << std::endl;
+        color_.destroy();
+    }
+    else
+        std::cout << "Color sensor creation successful" << std::endl;
+    rc_ = color_.start();                      // Start the Color VideoStream
+     
+    if(rc_ != openni::STATUS_OK){
+        std::cout << "Color sensor activation failed" << std::endl;
+        color_.destroy();
+    }
+    else
+        std::cout << "Color sensor activation successful" << std::endl;
+  }
+};
 
 
 class NormalEstimator{
@@ -842,7 +890,6 @@ public:
     pcl::transformPointCloud (*model, *off_scene_model_, Eigen::Vector3f (-1,0,0), Eigen::Quaternionf (1, 0, 0, 0));
 
     if(iter == 0){
-      viewer_.setBackgroundColor (255, 255, 255);
       viewer_.addPointCloud (off_scene_model_,  "off_scene_model_");
       viewer_.addPointCloud (scene, "scene_cloud");
     }
