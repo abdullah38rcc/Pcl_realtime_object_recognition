@@ -1,5 +1,8 @@
 
 #include "openni2pcl_reg.hpp"
+#include <pcl/registration/icp.h>
+
+
 
 
 
@@ -50,6 +53,7 @@ bool use_hough(true);
 bool to_filter(false);
 bool show_filtered(false);
 bool remove_outliers(false);
+bool use_icp(false);
 
 void showHelp (char *filename){
   std::cout << std::endl;
@@ -111,6 +115,7 @@ void parseCommandLine (int argc, char *argv[]){
     ppfe = true;
   if (pcl::console::find_switch (argc, argv, "-remove_outliers"))
     remove_outliers = true;
+
 
   std::string used_algorithm;
   if (pcl::console::parse_argument (argc, argv, "--algorithm", used_algorithm) != -1){
@@ -180,7 +185,7 @@ void parseCommandLine (int argc, char *argv[]){
 
 }
 
-void showKeyHelp(){
+inline void showKeyHelp(){
 
   std::cout << "Press q to increase the Hough thresh by 1" << std::endl;
   std::cout << "Press w to decrease the Hough thresh by 1" << std::endl;
@@ -190,6 +195,7 @@ void showKeyHelp(){
   std::cout << "Press x to decrease the scene sampling size" << std::endl;
   std::cout << "Press p to print the actual parameters" << std::endl;
   std::cout << "Press k to toggle filtered mode" << std::endl;
+  std::cout << "Press i to toggle icp alignment" << std::endl;
 }
 
 
@@ -229,6 +235,8 @@ void keyboardEventOccurred(const pcl::visualization::KeyboardEvent &event){
       std::cout << "\t sac segmentation distance decreased to " << sac_seg_distance <<std::endl;
     } else if(pressed == "k"){
       show_filtered = !show_filtered;
+    } else if(pressed == "i"){
+      use_icp = !use_icp;
     }
     else if(pressed == "h"){
       showKeyHelp();
@@ -236,7 +244,7 @@ void keyboardEventOccurred(const pcl::visualization::KeyboardEvent &event){
   }
 }
 
-void SetViewPoint(pcl::PointCloud<PointType>::Ptr cloud){
+inline void SetViewPoint(pcl::PointCloud<PointType>::Ptr cloud){
 
     cloud->sensor_origin_.setZero();
     cloud->sensor_orientation_.w () = 0.0;
@@ -860,11 +868,51 @@ public:
   }
 };
 
+template<class T, class TT>
+class ICPRegistration{
+public:
+  int count;
+  pcl::IterativeClosestPoint<T, TT> icp;
+
+
+  ICPRegistration(){
+    // Set the max correspondence distance to 5cm (e.g., correspondences with higher distances will be ignored)
+    //icp.setMaxCorrespondenceDistance (0.05);
+    // Set the maximum number of iterations (criterion 1)
+    //icp.setMaximumIterations (20);
+    // Set the transformation epsilon (criterion 2)
+    //icp.setTransformationEpsilon (1e-18);
+    // Set the euclidean distance difference epsilon (criterion 3)
+    //icp.setEuclideanFitnessEpsilon (1);
+    count = 0;
+  }
+
+  void Align(typename pcl::PointCloud<T>::Ptr cloud_source, typename pcl::PointCloud< TT>::Ptr cloud_target){
+    
+    typename pcl::PointCloud< T>::Ptr cloud_source_registered (new typename pcl::PointCloud< T> ());
+    
+    icp.setInputSource (cloud_source);
+    icp.setInputTarget (cloud_target);
+
+    // Perform the alignment
+    icp.align (*cloud_source);
+
+    // Obtain the transformation that aligned cloud_source to cloud_source_registered
+    //transformation = icp.getFinalTransformation ();
+
+    //std::cout << "TRANSFORMATION: " << std::endl;
+    //std::cout << transformation << std::endl;
+  } 
+
+};
+
+
 class Visualizer{
 public:
   pcl::visualization::PCLVisualizer viewer_;
   pcl::PointCloud<PointType>::Ptr off_scene_model_;
   pcl::PointCloud<PointType>::Ptr off_scene_model_keypoints_;
+  ICPRegistration<PointType, PointType> icp;
   int iter;
   bool clean;
   std::stringstream ss_cloud;
@@ -921,6 +969,10 @@ public:
       clean = false;
       pcl::PointCloud<PointType>::Ptr rotated_model (new pcl::PointCloud<PointType> ());
       pcl::transformPointCloud (*model, *rotated_model, std::get<0>(cluster)[i]);
+      if(use_icp){
+        icp.Align(rotated_model, scene);
+        //pcl::transformPointCloud (*rotated_model, *rotated_model, transformation);
+      }
       SetViewPoint(rotated_model);
 
       ss_cloud << "instance" << i;
@@ -960,3 +1012,5 @@ public:
   iter++;
   }
 };
+
+

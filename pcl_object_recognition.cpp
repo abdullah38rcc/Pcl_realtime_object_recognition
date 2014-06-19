@@ -21,8 +21,6 @@ int main( int argc, char** argv ){
   openni::VideoFrameRef colorf;
   OpenniStreamer openni_streamer; 
   
-  int save_cloud = 1;
-
   std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> model_list = ReadModels(argv);
    
   Openni2pcl<pcl::PointXYZRGB> grabber;
@@ -38,6 +36,8 @@ int main( int argc, char** argv ){
   Ransac<pcl::SampleConsensusModelSphere<pcl::PointXYZRGB>> ransac_estimator;
   Ppfe ppfe_estimator(model_list[0]);
   ColorSampling filter(filter_intensity);
+
+  
   if(to_filter){
     filter.addCloud(*model_list[0]);
   }
@@ -49,15 +49,13 @@ int main( int argc, char** argv ){
   std::cout << "calculating model normals... "  <<std::endl;
   if(!ppfe){
     model_normals = norm.get_normals(model_list[0]);
-    if(save_cloud == 0)
-      pcl::io::savePCDFileASCII ("model_sampled_normals.pcd", *model_normals);
     std::cout << "model size " << model_list[0]->points.size() << std::endl;
     if (random_points){
       random.setInputCloud(model_list[0]);
       random.setSeed(std::rand());
       random.setSample( random_model_samples );
       random.filter(*model_keypoints); 
-    } else{
+    }else{
       uniform.SetSamplingSize(model_ss);
       uniform.GetKeypoints(model_list[0], model_keypoints);
     }
@@ -76,8 +74,6 @@ int main( int argc, char** argv ){
     scene = grabber.get_point_cloud_openni2(colorf, irf, distance, true);
 
     copyPointCloud(*scene, *complete_scene);
-    if(save_cloud == 0)
-      pcl::io::savePCDFileASCII ("good_scene.pcd", *scene);
     if(to_filter){
       filter.filterPointCloud(*scene, *scene);
     }
@@ -89,8 +85,6 @@ int main( int argc, char** argv ){
     //  Compute Normals
     std::cout << "calculating scene normals... "  <<std::endl;
     scene_normals = norm.get_normals(scene);
-    if(save_cloud == 0)
-      pcl::io::savePCDFileASCII ("scene_sampled_normals.pcd", *scene_normals);
 
     if(ppfe){
       //PPFEESTIMATOR
