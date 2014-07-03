@@ -22,6 +22,11 @@ int main( int argc, char** argv ){
   OpenniStreamer openni_streamer; 
   
   std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> model_list = ReadModels(argv);
+
+  if (model_list.size() == 0){
+    std::cout << " no models loaded " << std::endl;
+    return 1;
+  }
    
   Openni2pcl<pcl::PointXYZRGB> grabber;
   NormalEstimator norm;
@@ -43,7 +48,7 @@ int main( int argc, char** argv ){
   }
   if(remove_outliers){
     sor.setMeanK(50);
-    sor.setStddevMulThresh(1.0);
+    sor.setStddevMulThresh(0.5);
   }
 
   std::cout << "calculating model normals... "  <<std::endl;
@@ -145,13 +150,11 @@ int main( int argc, char** argv ){
       }
     }
     std::cout << "\tFound " << std::get<0>(cluster).size () << " model instance/instances " <<  std::endl;
-    if(show_filtered){
-      complete_scene = scene;
-    }
+    
     SetViewPoint(complete_scene);
 
     
-    visualizer.Visualize(model_list[0], model_keypoints, complete_scene, scene_keypoints, cluster);
+    visualizer.Visualize(model_list[0], model_keypoints, complete_scene, scene_keypoints, cluster, scene);
   }
   return 0;
 }

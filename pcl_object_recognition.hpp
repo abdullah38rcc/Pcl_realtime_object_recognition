@@ -3,11 +3,6 @@
 #include <pcl/registration/icp.h>
 
 
-
-
-
-
-
 typedef pcl::PointXYZRGB PointType;
 typedef pcl::Normal NormalType;
 typedef pcl::ReferenceFrame RFType;
@@ -16,7 +11,6 @@ typedef std::tuple<std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::
 
 const Eigen::Vector4f subsampling_leaf_size (0.01f, 0.01f, 0.01f, 0.0f);
 const float normal_estimation_search_radius = 0.05f;
-const int distance = 700; //kinect cut-off distance
 
 
 //Algorithm params
@@ -40,6 +34,7 @@ int n_octaves(6);
 int n_scales_per_octave (4);
 int random_scene_samples(1000);
 int random_model_samples(1000);
+int distance(700); //kinect cut-off distance
 bool narf(false);
 bool random_points(false);
 bool sift(false); 
@@ -54,6 +49,7 @@ bool to_filter(false);
 bool show_filtered(false);
 bool remove_outliers(false);
 bool use_icp(false);
+
 
 void showHelp (char *filename){
   std::cout << std::endl;
@@ -95,6 +91,7 @@ void showHelp (char *filename){
   std::cout << "     --random_model_samples                   number of random samples in the model (default 1000) "   << std::endl;
 
 }
+
 
 void parseCommandLine (int argc, char *argv[]){
   //Show help
@@ -180,13 +177,10 @@ void parseCommandLine (int argc, char *argv[]){
   pcl::console::parse_argument (argc, argv, "--random_model_samples", random_model_samples);
   pcl::console::parse_argument (argc, argv, "--random_scene_samples", random_scene_samples);
   pcl::console::parse_argument (argc, argv, "--filter_intensity", filter_intensity);
-
-
-
 }
 
-inline void showKeyHelp(){
 
+inline void showKeyHelp(){
   std::cout << "Press q to increase the Hough thresh by 1" << std::endl;
   std::cout << "Press w to decrease the Hough thresh by 1" << std::endl;
   std::cout << "Press a to increase Hough bin size by 0.001" << std::endl;
@@ -196,8 +190,10 @@ inline void showKeyHelp(){
   std::cout << "Press p to print the actual parameters" << std::endl;
   std::cout << "Press k to toggle filtered mode" << std::endl;
   std::cout << "Press i to toggle icp alignment" << std::endl;
+  std::cout << "Press n to incraese aquired distance" << std::endl;
+  std::cout << "Press m to incraese aquired distance" << std::endl;
+  std::cout << "Press v to toggle verbose" << std::endl;
 }
-
 
 
 void keyboardEventOccurred(const pcl::visualization::KeyboardEvent &event){
@@ -235,14 +231,19 @@ void keyboardEventOccurred(const pcl::visualization::KeyboardEvent &event){
       std::cout << "\t sac segmentation distance decreased to " << sac_seg_distance <<std::endl;
     } else if(pressed == "k"){
       show_filtered = !show_filtered;
+    } else if(pressed == "n"){
+      distance += 100;
+    } else if(pressed == "m"){
+      if(distance > 200)
+        distance -= 100;
     } else if(pressed == "i"){
       use_icp = !use_icp;
-    }
-    else if(pressed == "h"){
+    } else if(pressed == "h"){
       showKeyHelp();
     }
   }
 }
+
 
 inline void SetViewPoint(pcl::PointCloud<PointType>::Ptr cloud){
 
@@ -252,6 +253,7 @@ inline void SetViewPoint(pcl::PointCloud<PointType>::Ptr cloud){
     cloud->sensor_orientation_.y () = 0.0;
     cloud->sensor_orientation_.z () = 0.0;
 }
+
 
 std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> ReadModels (char** argv) {
   pcl::PCDReader reader;
@@ -266,7 +268,7 @@ std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> ReadModels (char** argv) {
     if(std::strlen(str) > 2 ){
       pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud (new pcl::PointCloud<pcl::PointXYZRGB> ());
       reader.read (str, *cloud);
-      SetViewPoint(cloud);
+      ///SetViewPoint(cloud);
       cloud_models.push_back (cloud);
       PCL_INFO ("Model read: %s\n", str);
     }
@@ -274,6 +276,7 @@ std::vector<pcl::PointCloud<pcl::PointXYZRGB>::Ptr> ReadModels (char** argv) {
   std::cout << "all loaded" << std::endl;
   return std::move(cloud_models);
 }
+
 
 void PrintTransformation(ClusterType cluster){
   for (size_t i = 0; i < std::get<0>(cluster).size (); ++i)
@@ -293,6 +296,7 @@ void PrintTransformation(ClusterType cluster){
     printf ("        t = < %0.3f, %0.3f, %0.3f >\n", translation (0), translation (1), translation (2));
   }
 }
+
 
 class ColorSampling{
 public:
@@ -359,7 +363,6 @@ public:
 };
 
 
-
 pcl::PointCloud<pcl::PointNormal>::Ptr subsampleAndCalculateNormals (pcl::PointCloud<pcl::PointXYZ>::Ptr cloud){
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_subsampled (new pcl::PointCloud<pcl::PointXYZ> ());
   pcl::VoxelGrid<pcl::PointXYZ> subsampling_filter;
@@ -381,6 +384,7 @@ pcl::PointCloud<pcl::PointNormal>::Ptr subsampleAndCalculateNormals (pcl::PointC
   PCL_INFO ("Cloud dimensions before / after subsampling: %u / %u\n", cloud->points.size (), cloud_subsampled->points.size ());
   return cloud_subsampled_with_normals;
 }
+
 
 template <class T, class Estimator>
 class KeyDes{
@@ -468,6 +472,7 @@ public:
 
   }
 };
+
 
 class Ppfe{
 public:
@@ -562,6 +567,7 @@ public:
   }
 
 };
+
 
 class OpenniStreamer {
 public:
@@ -844,6 +850,7 @@ public:
 
 };
 
+
 class GCG{
 public:
   pcl::GeometricConsistencyGrouping<PointType, PointType> gc_clusterer_;
@@ -868,6 +875,7 @@ public:
   }
 };
 
+
 template<class T, class TT>
 class ICPRegistration{
 public:
@@ -877,13 +885,13 @@ public:
 
   ICPRegistration(){
     // Set the max correspondence distance to 5cm (e.g., correspondences with higher distances will be ignored)
-    //icp.setMaxCorrespondenceDistance (0.05);
+    icp.setMaxCorrespondenceDistance (0.05);
     // Set the maximum number of iterations (criterion 1)
-    //icp.setMaximumIterations (20);
+    icp.setMaximumIterations (20);
     // Set the transformation epsilon (criterion 2)
-    //icp.setTransformationEpsilon (1e-18);
+    icp.setTransformationEpsilon (1e-18);
     // Set the euclidean distance difference epsilon (criterion 3)
-    //icp.setEuclideanFitnessEpsilon (1);
+    icp.setEuclideanFitnessEpsilon (1);
     count = 0;
   }
 
@@ -903,7 +911,6 @@ public:
     //std::cout << "TRANSFORMATION: " << std::endl;
     //std::cout << transformation << std::endl;
   } 
-
 };
 
 
@@ -925,7 +932,7 @@ public:
   }
 
   void Visualize(pcl::PointCloud<PointType>::Ptr model, pcl::PointCloud<PointType>::Ptr model_keypoints, pcl::PointCloud<PointType>::Ptr scene,
-                 pcl::PointCloud<PointType>::Ptr scene_keypoints, ClusterType cluster){
+                 pcl::PointCloud<PointType>::Ptr scene_keypoints, ClusterType cluster, pcl::PointCloud<PointType>::Ptr filtered_scene){
 
 
     if(!clean) {
@@ -936,7 +943,9 @@ public:
     }
     //SetViewPoint(scene);
     pcl::transformPointCloud (*model, *off_scene_model_, Eigen::Vector3f (-1,0,0), Eigen::Quaternionf (1, 0, 0, 0));
-
+    if(show_filtered){
+      scene = filtered_scene;
+    }
     if(iter == 0){
       viewer_.addPointCloud (off_scene_model_,  "off_scene_model_");
       viewer_.addPointCloud (scene, "scene_cloud");
@@ -970,7 +979,7 @@ public:
       pcl::PointCloud<PointType>::Ptr rotated_model (new pcl::PointCloud<PointType> ());
       pcl::transformPointCloud (*model, *rotated_model, std::get<0>(cluster)[i]);
       if(use_icp){
-        icp.Align(rotated_model, scene);
+        icp.Align(rotated_model, filtered_scene);
         //pcl::transformPointCloud (*rotated_model, *rotated_model, transformation);
       }
       SetViewPoint(rotated_model);
@@ -1007,7 +1016,6 @@ public:
         }
       }
     }
-   
   viewer_.spinOnce();
   iter++;
   }
