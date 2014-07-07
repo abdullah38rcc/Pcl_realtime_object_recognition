@@ -35,3 +35,15 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/sample_consensus/method_types.h>
 #include <pcl/sample_consensus/model_types.h>
+#include <pcl/registration/icp.h>
+#include <pcl/filters/random_sample.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl/impl/point_types.hpp>
+#include <pcl/features/ppfrgb.h>
+#include <pcl/features/ppf.h>
+#include <pcl/features/pfhrgb.h>
+#include <pcl/features/pfh.h>
+#include <pcl/features/impl/ppfrgb.hpp>
+#include <pcl/keypoints/harris_3d.h>
+#include <pcl/registration/correspondence_rejection_sample_consensus.h>
+

@@ -1,6 +1,9 @@
 
+#include "all.hpp"
 #include "openni2pcl_reg.hpp"
-#include <pcl/registration/icp.h>
+#include <pcl/keypoints/harris_3d.h>
+#include <pcl/registration/correspondence_rejection_sample_consensus.h>
+
 
 
 typedef pcl::PointXYZRGB PointType;
@@ -20,25 +23,34 @@ float rf_rad_(0.02);
 float descr_rad(0.05);
 float cg_size(0.007);
 float cg_thresh(6.0f);
-float descriptor_distance(0.25);
 float sac_seg_iter(1000);
 float reg_sampling_rate(10);
 float sac_seg_distance(0.05);
 float reg_clustering_threshold(0.2);
 float max_inliers(40000);
-float min_scale(0.001);
+float min_scale(0.01);
 float min_contrast(0.1f);
 float support_size(0.02);
-float filter_intensity(0.02);
-int n_octaves(6);
-int n_scales_per_octave (4);
+float filter_intensity(0.04);
+float descriptor_distance(0.25);
+float segmentation_threshold(0.01);
+int segmentation_iterations(1000);
+int n_octaves(3);
+int n_scales_per_octave (2);
 int random_scene_samples(1000);
 int random_model_samples(1000);
 int distance(700); //kinect cut-off distance
+int harris_type(1);
 bool narf(false);
 bool random_points(false);
 bool sift(false); 
-bool fpfh(false); 
+bool harris(false);
+bool fpfh(false);
+bool pfh(false);
+bool pfhrgb(false);
+bool ppf(false);
+bool ppfrgb(false);
+bool shot(false);
 bool ransac(false);
 bool ppfe(false);
 bool first(true);
@@ -49,6 +61,7 @@ bool to_filter(false);
 bool show_filtered(false);
 bool remove_outliers(false);
 bool use_icp(false);
+bool segment(false);
 
 
 void showHelp (char *filename){
@@ -58,37 +71,44 @@ void showHelp (char *filename){
   std::cout << "*             Real time object recognition - Usage Guide                  *" << std::endl;
   std::cout << "*                                                                         *" << std::endl;
   std::cout << "***************************************************************************" << std::endl << std::endl;
-  std::cout << "Usage: " << filename << " model_filename_list [Options]" << std::endl << std::endl;
-  std::cout << "Options:" << std::endl;
-  std::cout << "     -h:                                Show this help." << std::endl;
-  std::cout << "     -ppfe:                             Uses ppfe overriding all the other parameters." << std::endl;
-  std::cout << "     -show_keypoints:                   Show used keypoints." << std::endl;
-  std::cout << "     -show_correspondences:             Show used correspondences." << std::endl;
-  std::cout << "     -filter:                           Filter the cloud by color leaving only the points which are close to the model color." << std::endl;
-  std::cout << "     -remove_outliers:                  Remove ouliers from the scene." << std::endl;
-  std::cout << "     --filter_intensity:                Max distance between colors normalized between 0 and 1 (default 0.02)" << std::endl;
-  std::cout << "     --descriptor_distance:             Descriptor max distance to be a match (default 0.25)" << std::endl;
-  std::cout << "     --algorithm (hough|gc):            Clustering algorithm used (default Hough)." << std::endl;
-  std::cout << "     --keypoints (narf|sift|uniform|random):   Keypoints detection algorithm (default uniform)." << std::endl;
-  std::cout << "     --descriptors (shot|fpfh):         Descriptor type (default shot)." << std::endl;
-  std::cout << "     --model_ss val:                    Model uniform sampling radius (default 0.005)" << std::endl;
-  std::cout << "     --scene_ss val:                    Scene uniform sampling radius (default 0.005)" << std::endl;
+  std::cout << "Usage " << filename << " model_filename_list [Options]" << std::endl << std::endl;
+  std::cout << "Options" << std::endl;
+  std::cout << "     -h                                 Show this help." << std::endl;
+  std::cout << "     -ppfe                              Uses ppfe overriding all the other parameters." << std::endl;
+  std::cout << "     -show_keypoints                    Show used keypoints." << std::endl;
+  std::cout << "     -show_correspondences              Show used correspondences." << std::endl;
+  std::cout << "     -filter                            Filter the cloud by color leaving only the points which are close to the model color." << std::endl;
+  std::cout << "     -remove_outliers                   Remove ouliers from the scene." << std::endl;
+  std::cout << "     -segment                           Segments the objects in the scene removing the major plane." << std::endl;
+  std::cout << "     --filter_intensity val             Max distance between colors normalized between 0 and 1 (default 0.02)" << std::endl;
+  std::cout << "     --descriptor_distance val          Descriptor max distance to be a match (default 0.25)" << std::endl;
+  std::cout << "     --algorithm (hough|gc)             Clustering algorithm used (default Hough)." << std::endl;
+  std::cout << "     --keypoints (narf|sift|uniform|random|harris)    Keypoints detection algorithm (default uniform)." << std::endl;
+  std::cout << "     --descriptors (shot|fpfh|pfh|pfhrgb|ppf)          Descriptor type (default shot)." << std::endl;
+  std::cout << "     --model_ss val                     Model uniform sampling radius (default 0.005)" << std::endl;
+  std::cout << "     --scene_ss val                     Scene uniform sampling radius (default 0.005)" << std::endl;
   std::cout << "     --rf_rad val:                      Hough reference frame radius (default 0.02)" << std::endl;
-  std::cout << "     --descr_rad val:                   Descriptor radius (default 0.03)" << std::endl;
-  std::cout << "     --cg_size val:                     Dimension of Hough's bins (default 0.007)" << std::endl;
-  std::cout << "     --cg_thresh val:                   Minimum number of positive votes for a match (default 6)" << std::endl;
-  std::cout << "     --sift_min_scale:                  (default 0.001)" << std::endl;
-  std::cout << "     --sift_octaves:                    (default 6)" << std::endl;
-  std::cout << "     --sift_scales_per_octave:          (default 4)" << std::endl;
-  std::cout << "     --sift_min_contrast:               (default 0.3)" << std::endl << std::endl;
-  std::cout << "     --narf_support_size:               (default 0.02)" << std::endl << std::endl;
-  std::cout << "     --sac_seg_iter:                    max iteration number of the ransac segmentation (default 1000)" << std::endl;
-  std::cout << "     --reg_clustering_threshold         registration position clustering threshold (default 0.2)"  << std::endl;
-  std::cout << "     --reg_sampling_rate                ppfe registration sampling rate (default 10)"  << std::endl;
-  std::cout << "     --sac_seg_distance                 ransac segmentation distance threshold (default 0.05)"  << std::endl;
-  std::cout << "     --max_inliers                      max number of inliers (default 40000)"  << std::endl;
-  std::cout << "     --random_scene_samples                   number of random samples in the scene (default 1000) "   << std::endl;
-  std::cout << "     --random_model_samples                   number of random samples in the model (default 1000) "   << std::endl;
+  std::cout << "     --descr_rad val                    Descriptor radius (default 0.03)" << std::endl;
+  std::cout << "     --cg_size val                      Dimension of Hough's bins (default 0.007)" << std::endl;
+  std::cout << "     --cg_thresh val                    Minimum number of positive votes for a match (default 6)" << std::endl;
+  std::cout << "     --sift_min_scale val               (default 0.01)" << std::endl;
+  std::cout << "     --sift_octaves val                 (default 3)" << std::endl;
+  std::cout << "     --sift_scales_per_octave val       (default 2)" << std::endl;
+  std::cout << "     --sift_min_contrast val            (default 0.3)" << std::endl;
+  std::cout << "     --narf_support_size val            (default 0.02)" << std::endl;
+  std::cout << "     --sac_seg_iter val                 Max iteration number of the ransac segmentation (default 1000)" << std::endl;
+  std::cout << "     --reg_clustering_threshold val     Registration position clustering threshold (default 0.2)"  << std::endl;
+  std::cout << "     --reg_sampling_rate val            Ppfe registration sampling rate (default 10)"  << std::endl;
+  std::cout << "     --sac_seg_distance val             Ransac segmentation distance threshold (default 0.05)"  << std::endl;
+  std::cout << "     --max_inliers val                  Max number of inliers (default 40000)"  << std::endl;
+  std::cout << "     --random_scene_samples val         Number of random samples in the scene (default 1000) "   << std::endl;
+  std::cout << "     --random_model_samples val         Number of random samples in the model (default 1000) "   << std::endl;
+  std::cout << "     --harris_type val (HARRIS = 1|NOBLE = 2|LOWE = 3|TOMASI = 4|CURVATURE = 5)                 (default HARRIS) "   << std::endl;
+  std::cout << "     --descriptor_distance              Maximum distance between descriptors (default 0.25) "   << std::endl;
+  std::cout << "     --segmentation_threshold           Segmentation threshold for the plane recognition (default 0.01) "   << std::endl;
+  std::cout << "     --segmentation_iterations          Number of iteration of the segmenter (default 1000) "   << std::endl;
+
+
 
 }
 
@@ -112,6 +132,8 @@ void parseCommandLine (int argc, char *argv[]){
     ppfe = true;
   if (pcl::console::find_switch (argc, argv, "-remove_outliers"))
     remove_outliers = true;
+  if (pcl::console::find_switch (argc, argv, "-segment"))
+    segment = true;
 
 
   std::string used_algorithm;
@@ -137,6 +159,8 @@ void parseCommandLine (int argc, char *argv[]){
       ransac = true;
     else if(used_keypoints.compare("random") == 0)
       random_points = true;
+    else if(used_keypoints.compare("harris") == 0)
+      harris = true;
     else if(used_keypoints.compare("uniform") == 0)
       std::cout << "Using uniform sampling.\n";
     
@@ -145,9 +169,17 @@ void parseCommandLine (int argc, char *argv[]){
   std::string used_descriptors;
   if (pcl::console::parse_argument (argc, argv, "--descriptors", used_descriptors) != -1){
     if (used_descriptors.compare ("shot") == 0)
-      fpfh = false;
+      shot = true;
     else if (used_descriptors.compare ("fpfh") == 0)
       fpfh = true;
+    else if (used_descriptors.compare ("ppf") == 0)
+      ppf = true;
+    else if (used_descriptors.compare ("ppfrgb") == 0)
+      ppfrgb = true;
+    else if (used_descriptors.compare ("pfh") == 0)
+      pfh = true;
+    else if (used_descriptors.compare ("pfhrgb") == 0)
+      pfhrgb = true;
     else
     {
       std::cout << "Wrong descriptors type .\n";
@@ -177,6 +209,12 @@ void parseCommandLine (int argc, char *argv[]){
   pcl::console::parse_argument (argc, argv, "--random_model_samples", random_model_samples);
   pcl::console::parse_argument (argc, argv, "--random_scene_samples", random_scene_samples);
   pcl::console::parse_argument (argc, argv, "--filter_intensity", filter_intensity);
+  pcl::console::parse_argument (argc, argv, "--harris_type", harris_type);
+  pcl::console::parse_argument (argc, argv, "--descriptor_distance", descriptor_distance);
+  pcl::console::parse_argument (argc, argv, "--segmentation_threshold", segmentation_threshold);
+  pcl::console::parse_argument (argc, argv, "--segmentation_iterations", segmentation_iterations);
+
+
 }
 
 
@@ -192,7 +230,15 @@ inline void showKeyHelp(){
   std::cout << "Press i to toggle icp alignment" << std::endl;
   std::cout << "Press n to incraese aquired distance" << std::endl;
   std::cout << "Press m to incraese aquired distance" << std::endl;
-  std::cout << "Press v to toggle verbose" << std::endl;
+  std::cout << "Press j to switch between filtered and complete view" << std::endl;
+  std::cout << "Press d to lower segmentation threshold " << std::endl;
+  std::cout << "Press f to increase segmentation threshold" << std::endl;
+  std::cout << "Press l to lower filtering" << std::endl;
+  std::cout << "Press k to increase filtering" << std::endl;
+
+
+
+
 }
 
 
@@ -204,42 +250,47 @@ void keyboardEventOccurred(const pcl::visualization::KeyboardEvent &event){
       cg_thresh++;
       std::cout << "\tcg_thresh increased to " << cg_thresh << std::endl;
     } else if(pressed == "w"){
-      cg_thresh--;
-      std::cout << "\tcg_thresh decreased to " << cg_thresh << std::endl;
+        cg_thresh--;
+        std::cout << "\tcg_thresh decreased to " << cg_thresh << std::endl;
     } else if(pressed == "a"){
-      cg_size += 0.001;
-      std::cout << "\tcg_size increased to " << cg_size << std::endl;
+        cg_size += 0.001;
+        std::cout << "\tcg_size increased to " << cg_size << std::endl;
     } else if(pressed == "s"){
-      cg_size -= 0.001;
-      std::cout << "\tcg_size decreased to " << cg_size << std::endl;
+        cg_size -= 0.001;
+        std::cout << "\tcg_size decreased to " << cg_size << std::endl;
     } else if(pressed == "z"){
-      scene_ss += 0.001;
-      std::cout << "\tscene sampling size increased to " << scene_ss << std::endl;
+        scene_ss += 0.001;
+        std::cout << "\tscene sampling size increased to " << scene_ss << std::endl;
     } else if(pressed == "x"){
-      scene_ss -= 0.001;
-      std::cout << "\tscene sampling size decreased to " << scene_ss << std::endl;
-    } else if(pressed == "p"){
-      std::cout << "Parameters:" <<std::endl;
-      std::cout << "cg_thresh " << cg_thresh << std::endl;
-      std::cout << "cg_size " << cg_size << std::endl;
-      std::cout << "sampling size " << scene_ss << std::endl;
+        scene_ss -= 0.001;
+        std::cout << "\tscene sampling size decreased to " << scene_ss << std::endl;
     } else if(pressed == "e"){
-      sac_seg_distance += 0.001;
-      std::cout << "\t sac segmentation distance increased to " << sac_seg_distance <<std::endl;
+        sac_seg_distance += 0.001;
+        std::cout << "\t sac segmentation distance increased to " << sac_seg_distance <<std::endl;
     } else if(pressed == "e"){
-      sac_seg_distance -= 0.001;
-      std::cout << "\t sac segmentation distance decreased to " << sac_seg_distance <<std::endl;
-    } else if(pressed == "k"){
-      show_filtered = !show_filtered;
+        sac_seg_distance -= 0.001;
+        std::cout << "\t sac segmentation distance decreased to " << sac_seg_distance <<std::endl;
+    } else if(pressed == "j"){
+        show_filtered = !show_filtered;
     } else if(pressed == "n"){
-      distance += 100;
+        distance += 100;
+    } else if(pressed == "d"){
+        segmentation_threshold += 0.01;
+    } else if(pressed == "f"){
+        if (segmentation_threshold > 0)
+          segmentation_threshold -= 0.01;
+    } else if(pressed == "l"){
+        filter_intensity += 0.01;
+    } else if(pressed == "k"){
+        if (filter_intensity > 0)
+          filter_intensity -= 0.01;
     } else if(pressed == "m"){
-      if(distance > 200)
-        distance -= 100;
+        if(distance > 200)
+          distance -= 100;
     } else if(pressed == "i"){
-      use_icp = !use_icp;
+        use_icp = !use_icp;
     } else if(pressed == "h"){
-      showKeyHelp();
+        showKeyHelp();
     }
   }
 }
@@ -297,10 +348,38 @@ void PrintTransformation(ClusterType cluster){
   }
 }
 
+pcl::PointCloud<PointType>::Ptr
+findAndSubtractPlane (const pcl::PointCloud<PointType>::Ptr  input, float distance_threshold, float max_iterations)
+{
+  // Find the dominant plane
+  pcl::SACSegmentation<PointType> seg;
+  seg.setOptimizeCoefficients (false);
+  seg.setModelType (pcl::SACMODEL_PLANE);
+  seg.setMethodType (pcl::SAC_RANSAC);
+  seg.setDistanceThreshold (distance_threshold);
+  seg.setMaxIterations (max_iterations);
+  seg.setInputCloud (input);
+  pcl::ModelCoefficients::Ptr coefficients (new pcl::ModelCoefficients ());
+  pcl::PointIndices::Ptr inliers (new pcl::PointIndices ());
+  seg.segment (*inliers, *coefficients);  
+
+  // Extract the inliers
+  pcl::ExtractIndices<PointType> extract;
+  extract.setInputCloud (input);
+  extract.setIndices (inliers);
+  extract.setNegative (true);
+  pcl::PointCloud<PointType>::Ptr output (new pcl::PointCloud<PointType> ());
+  extract.filter (*output);
+
+  return (output);
+}
+
 
 class ColorSampling{
 public:
-  ColorSampling(float tollerance_range): tollerance_range_(tollerance_range) {
+
+
+  ColorSampling() {
     clear();
     rgb2yuv << 0.229,    0.587,   0.114,
               -0.14713, -0.28886, 0.436,
@@ -342,13 +421,12 @@ public:
   Eigen::Matrix3f rgb2yuv;
 
   float avg_u_, avg_v_;
-  float tollerance_range_;
 
   bool toFilter(const pcl::PointXYZRGB &point){
     float u, v;
     RGBtoYUV(point, u, v);
     float distance = sqrt(pow(u - avg_u_, 2) + pow(v - avg_v_, 2));
-    if(distance < tollerance_range_)
+    if(distance < filter_intensity)
       return false;
     else
       return true;
@@ -459,14 +537,20 @@ public:
       std::vector<float> neigh_sqr_dists (1);
       if(match_search.point_representation_->isValid (scene_descriptors->at(i))){
         int found_neighs = match_search.nearestKSearch (scene_descriptors->at(i), 1, neigh_indices, neigh_sqr_dists);
-        if(found_neighs == 1 && neigh_sqr_dists[0] < 0.25f) //  0.25 std add match only if the squared descriptor distance is less than 0.25 (SHOT descriptor distances are between 0 and 1 by design)
-        {
+        if(found_neighs == 1 && neigh_sqr_dists[0] < descriptor_distance) {
           pcl::Correspondence corr (neigh_indices[0], static_cast<int> (i), neigh_sqr_dists[0]);
           #pragma omp critical
           model_scene_corrs->push_back (corr);
         }
       }
     }
+    /*
+    pcl::registration::CorrespondenceRejectorSampleConsensus<PointType> rejector;
+    rejector.setInputSource(model);
+    rejector.setInputTarget(scene);
+    rejector.setInputCorrespondences(model_scene_corrs);
+    rejector.getCorrespondences(*model_scene_corrs);
+  */
     std::cout << "\tFound "  <<model_scene_corrs->size ()<< " correspondences "<< std::endl;
     return model_scene_corrs;
 
@@ -741,6 +825,41 @@ public:
   }
 };
 
+class Harris{
+public:
+  pcl::HarrisKeypoint3D<PointType, pcl::PointXYZI>* harris3D;
+
+  Harris(): harris3D(new pcl::HarrisKeypoint3D<PointType,pcl::PointXYZI> (pcl::HarrisKeypoint3D<PointType,pcl::PointXYZI>::HARRIS)){
+    harris3D->setNonMaxSupression(true); 
+    harris3D->setRadius(0.03); 
+    harris3D->setRadiusSearch(0.03);
+    switch(harris_type) {
+      default :
+          harris3D->setMethod(pcl::HarrisKeypoint3D<pcl::PointXYZRGB,pcl::PointXYZI>::HARRIS); 
+          break;
+      case 2 :
+          harris3D->setMethod(pcl::HarrisKeypoint3D<pcl::PointXYZRGB,pcl::PointXYZI>::NOBLE); 
+          break;
+      case 3 :
+          harris3D->setMethod(pcl::HarrisKeypoint3D<pcl::PointXYZRGB,pcl::PointXYZI>::LOWE); 
+          break;
+      case 4 :
+          harris3D->setMethod(pcl::HarrisKeypoint3D<pcl::PointXYZRGB,pcl::PointXYZI>::TOMASI); 
+          break;
+      case 5 :
+          harris3D->setMethod(pcl::HarrisKeypoint3D<pcl::PointXYZRGB,pcl::PointXYZI>::CURVATURE); 
+          break;
+    }
+  }
+
+  void GetKeypoints(pcl::PointCloud<PointType>::Ptr cloud, pcl::PointCloud<PointType>::Ptr cloud_keypoints){
+    harris3D->setInputCloud(cloud);
+    pcl::PointCloud<pcl::PointXYZI>::Ptr keypoints_temp (new pcl::PointCloud<pcl::PointXYZI>);  
+    harris3D->compute(*keypoints_temp); 
+    copyPointCloud (*keypoints_temp , *cloud_keypoints); 
+  }
+};
+
 
 template <class T>
 class Ransac{
@@ -947,6 +1066,7 @@ public:
       scene = filtered_scene;
     }
     if(iter == 0){
+      SetViewPoint(off_scene_model_);
       viewer_.addPointCloud (off_scene_model_,  "off_scene_model_");
       viewer_.addPointCloud (scene, "scene_cloud");
     }
@@ -1020,5 +1140,4 @@ public:
   iter++;
   }
 };
-
 

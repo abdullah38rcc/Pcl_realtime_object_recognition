@@ -1,7 +1,7 @@
+
 #include "all.hpp"
 #include "pcl_object_recognition.hpp"
-#include <pcl/filters/random_sample.h>
-#include <pcl/filters/statistical_outlier_removal.h>
+
 
 
 int main( int argc, char** argv ){
@@ -35,12 +35,13 @@ int main( int argc, char** argv ){
   pcl::RandomSample<pcl::PointXYZRGB> random;
   Narf narf_estimator;
   Sift sift_estimator;
+  Harris harris_estimator;
   pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor;
 
   
   Ransac<pcl::SampleConsensusModelSphere<pcl::PointXYZRGB>> ransac_estimator;
   Ppfe ppfe_estimator(model_list[0]);
-  ColorSampling filter(filter_intensity);
+  ColorSampling filter;
 
   
   if(to_filter){
@@ -77,8 +78,11 @@ int main( int argc, char** argv ){
     openni_streamer.rc_ = openni_streamer.ir_.readFrame(&irf);
     openni_streamer.rc_ = openni_streamer.color_.readFrame(&colorf);
     scene = grabber.get_point_cloud_openni2(colorf, irf, distance, true);
+    
 
     copyPointCloud(*scene, *complete_scene);
+    if(segment)
+      scene = findAndSubtractPlane(scene, segmentation_threshold, segmentation_iterations);
     if(to_filter){
       filter.filterPointCloud(*scene, *scene);
     }
@@ -113,6 +117,11 @@ int main( int argc, char** argv ){
         std::cout << "finding ransac keypoints..."<< std::endl;
         ransac_estimator.GetKeypoints(scene, scene_keypoints);
 
+      } else if(harris){
+        //HARRIS
+        std::cout << "finding harris keypoints..."<< std::endl;
+        harris_estimator.GetKeypoints(scene, scene_keypoints);
+
       } else if(random_points){
         //RANDOM
         std::cout << "using random keypoints..."<< std::endl;
@@ -131,9 +140,27 @@ int main( int argc, char** argv ){
 
       pcl::CorrespondencesPtr model_scene_corrs (new pcl::Correspondences ());
       if(fpfh) {
+        std::cout << "using fpfh descriptors"<< std::endl;
         KeyDes<pcl::FPFHSignature33, pcl::FPFHEstimationOMP<pcl::PointXYZRGB, pcl::Normal, pcl::FPFHSignature33> > est(model_list[0], model_keypoints, scene, scene_keypoints, model_normals, scene_normals);
         model_scene_corrs = est.run();
-      }else{
+      }else if(pfh) {
+        std::cout << "using pfh descriptors"<< std::endl;
+        KeyDes<pcl::PFHSignature125, pcl::PFHEstimation<pcl::PointXYZRGB, pcl::Normal, pcl::PFHSignature125> > est(model_list[0], model_keypoints, scene, scene_keypoints, model_normals, scene_normals);
+        model_scene_corrs = est.run();
+      }else if(pfhrgb) {
+        std::cout << "using pfhrgb descriptors"<< std::endl;
+        KeyDes<pcl::PFHRGBSignature250, pcl::PFHRGBEstimation<pcl::PointXYZRGB, pcl::Normal, pcl::PFHRGBSignature250> > est(model_list[0], model_keypoints, scene, scene_keypoints, model_normals, scene_normals);
+        model_scene_corrs = est.run();
+      }else if(ppf) {
+        std::cout << "using ppf descriptors"<< std::endl;
+        KeyDes<pcl::PPFSignature, pcl::PPFEstimation<pcl::PointXYZRGB, pcl::Normal, pcl::PPFSignature> > est(model_list[0], model_keypoints, scene, scene_keypoints, model_normals, scene_normals);
+        model_scene_corrs = est.run();
+      }else if(ppfrgb) {
+        std::cout << "using ppfrgb descriptors"<< std::endl;
+        KeyDes<pcl::PPFRGBSignature, pcl::PPFRGBEstimation<pcl::PointXYZRGB, pcl::Normal, pcl::PPFRGBSignature> > est(model_list[0], model_keypoints, scene, scene_keypoints, model_normals, scene_normals);
+        model_scene_corrs = est.run();
+      }else if(shot){
+        std::cout << "using shot descriptors"<< std::endl;
         KeyDes<pcl::SHOT352, pcl::SHOTEstimationOMP<PointType, NormalType, pcl::SHOT352> > est(model_list[0], model_keypoints, scene, scene_keypoints, model_normals, scene_normals);
         model_scene_corrs = est.run();
       }
@@ -153,7 +180,6 @@ int main( int argc, char** argv ){
     
     SetViewPoint(complete_scene);
 
-    
     visualizer.Visualize(model_list[0], model_keypoints, complete_scene, scene_keypoints, cluster, scene);
   }
   return 0;
