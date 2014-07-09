@@ -1,7 +1,5 @@
 #include "all.hpp"
 #include "openni2pcl_reg.hpp"
-#include <pcl/keypoints/harris_3d.h>
-#include <pcl/registration/correspondence_rejection_sample_consensus.h>
 
 typedef pcl::PointXYZRGB PointType;
 typedef pcl::Normal NormalType;
@@ -9,12 +7,11 @@ typedef pcl::ReferenceFrame RFType;
 typedef std::tuple<std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f> >, std::vector<pcl::Correspondences>> ClusterType;
 
 const Eigen::Vector4f subsampling_leaf_size (0.01f, 0.01f, 0.01f, 0.0f);
-const float normal_estimation_search_radius = 0.05f;
 
 //Algorithm params
 float model_ss (0.005);
 float scene_ss (0.005);
-float rf_rad_ (0.02);
+float rf_rad (0.02);
 float descr_rad (0.05);
 float cg_size (0.007);
 float cg_thresh (6.0f);
@@ -29,6 +26,7 @@ float support_size (0.02);
 float filter_intensity (0.04);
 float descriptor_distance (0.25);
 float segmentation_threshold (0.01);
+float normal_estimation_search_radius (0.05);
 int segmentation_iterations (1000);
 int n_octaves (3);
 int n_scales_per_octave (2);
@@ -59,7 +57,7 @@ bool use_icp (false);
 bool segment (false);
 
 void
-showHelp (char *filename)
+ShowHelp (char *file_name)
 {
   std::cout << std::endl;
   std::cout << "***************************************************************************" << std::endl;
@@ -67,7 +65,7 @@ showHelp (char *filename)
   std::cout << "*             Real time object recognition - Usage Guide                  *" << std::endl;
   std::cout << "*                                                                         *" << std::endl;
   std::cout << "***************************************************************************" << std::endl << std::endl;
-  std::cout << "Usage " << filename << " model_filename_list [Options]" << std::endl << std::endl;
+  std::cout << "Usage " << file_name << " model_filename_list [Options]" << std::endl << std::endl;
   std::cout << "Options" << std::endl;
   std::cout << "     -h                                 Show this help." << std::endl;
   std::cout << "     -ppfe                              Uses ppfe overriding all the other parameters." << std::endl;
@@ -103,7 +101,6 @@ showHelp (char *filename)
   std::cout << "     --descriptor_distance              Maximum distance between descriptors (default 0.25) " << std::endl;
   std::cout << "     --segmentation_threshold           Segmentation threshold for the plane recognition (default 0.01) " << std::endl;
   std::cout << "     --segmentation_iterations          Number of iteration of the segmenter (default 1000) " << std::endl;
-
 }
 
 void
@@ -112,7 +109,7 @@ parseCommandLine (int argc, char *argv[])
   //Show help
   if (pcl::console::find_switch (argc, argv, "-h"))
   {
-    showHelp (argv[0]);
+    ShowHelp (argv[0]);
     exit (0);
   }
 
@@ -140,7 +137,7 @@ parseCommandLine (int argc, char *argv[])
     else
     {
       std::cout << "Wrong algorithm name.\n";
-      showHelp (argv[0]);
+      ShowHelp (argv[0]);
       exit (-1);
     }
   }
@@ -181,7 +178,7 @@ parseCommandLine (int argc, char *argv[])
     else
     {
       std::cout << "Wrong descriptors type .\n";
-      showHelp (argv[0]);
+      ShowHelp (argv[0]);
       exit (-1);
     }
   }
@@ -189,7 +186,7 @@ parseCommandLine (int argc, char *argv[])
   //General parameters
   pcl::console::parse_argument (argc, argv, "--model_ss", model_ss);
   pcl::console::parse_argument (argc, argv, "--scene_ss", scene_ss);
-  pcl::console::parse_argument (argc, argv, "--rf_rad", rf_rad_);
+  pcl::console::parse_argument (argc, argv, "--rf_rad", rf_rad);
   pcl::console::parse_argument (argc, argv, "--descr_rad", descr_rad);
   pcl::console::parse_argument (argc, argv, "--cg_size", cg_size);
   pcl::console::parse_argument (argc, argv, "--cg_thresh", cg_thresh);
@@ -215,7 +212,7 @@ parseCommandLine (int argc, char *argv[])
 }
 
 inline void
-showKeyHelp ()
+ShowKeyHelp ()
 {
   std::cout << "Press q to increase the Hough thresh by 1" << std::endl;
   std::cout << "Press w to decrease the Hough thresh by 1" << std::endl;
@@ -233,11 +230,10 @@ showKeyHelp ()
   std::cout << "Press f to increase segmentation threshold" << std::endl;
   std::cout << "Press l to lower filtering" << std::endl;
   std::cout << "Press k to increase filtering" << std::endl;
-
 }
 
 void
-keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event)
+KeyboardEventOccurred (const pcl::visualization::KeyboardEvent &event)
 {
   std::string pressed;
   pressed = event.getKeySym ();
@@ -320,7 +316,7 @@ keyboardEventOccurred (const pcl::visualization::KeyboardEvent &event)
     }
     else if (pressed == "h")
     {
-      showKeyHelp ();
+      ShowKeyHelp ();
     }
   }
 }
@@ -343,7 +339,7 @@ ReadModels (char** argv)
 
   std::vector < pcl::PointCloud < pcl::PointXYZRGB > ::Ptr > cloud_models;
 
-  ifstream pcd_file_list (argv[1]);
+  ifstream pcd_file_lis (argv[1]);
   while (!pcd_file_list.eof ())
   {
     char str[512];
@@ -358,7 +354,7 @@ ReadModels (char** argv)
     }
   }
   std::cout << "all loaded" << std::endl;
-  return std::move (cloud_models);
+  return (std::move (cloud_models));
 }
 
 void
@@ -378,12 +374,12 @@ PrintTransformation (ClusterType cluster)
     printf ("        R = | %6.3f %6.3f %6.3f | \n", rotation (1, 0), rotation (1, 1), rotation (1, 2));
     printf ("            | %6.3f %6.3f %6.3f | \n", rotation (2, 0), rotation (2, 1), rotation (2, 2));
     printf ("\n");
-    printf ("        t = < %0.3f, %0.3f, %0.3f >\n", translation (0), translation (1), translation (2));
+    printf ("        t = < %0.3f, %0.3f, %0.3f >\n", translation (0), translation (1), Translation3f (2));
   }
 }
 
 pcl::PointCloud<PointType>::Ptr
-findAndSubtractPlane (const pcl::PointCloud<PointType>::Ptr input, float distance_threshold, float max_iterations)
+FindAndSubtractPlane (const pcl::PointCloud<PointType>::Ptr input, float distance_threshold, float max_iterations)
 {
   // Find the dominant plane
   pcl::SACSegmentation<PointType> seg;
@@ -414,20 +410,20 @@ class ColorSampling
 
     ColorSampling ()
     {
-      clear ();
+      Clear ();
       rgb2yuv << 0.229, 0.587, 0.114, -0.14713, -0.28886, 0.436, 0.615, -0.51499, -0.10001;
     }
 
     void
-    clear ()
+    Clear ()
     {
       avg_u_ = 0, avg_v_ = 0;
     }
 
     void
-    addCloud (const pcl::PointCloud<pcl::PointXYZRGB> &cloud)
+    AddCloud (const pcl::PointCloud<pcl::PointXYZRGB> &cloud)
     {
-      clear ();
+      Clear ();
       float u, v;
       for (auto point : cloud.points)
       {
@@ -440,14 +436,14 @@ class ColorSampling
     }
 
     void
-    filterPointCloud (const pcl::PointCloud<pcl::PointXYZRGB> &in_cloud, pcl::PointCloud<pcl::PointXYZRGB> &out_cloud)
+    FilterPointCloud (const pcl::PointCloud<pcl::PointXYZRGB> &in_cloud, pcl::PointCloud<pcl::PointXYZRGB> &out_cloud)
     {
       pcl::PointCloud < pcl::PointXYZRGB > cloud;
       int points = in_cloud.points.size ();
 
       for (auto point : in_cloud.points)
       {
-        if (!toFilter (point))
+        if (!ToFilter (point))
           cloud.points.push_back (point);
       }
       out_cloud = cloud;
@@ -455,7 +451,7 @@ class ColorSampling
     }
 
     void
-    printColorInfo ()
+    PrintColorInfo ()
     {
       std::cout << "avg U: " << avg_u_ << " V: " << avg_v_ << std::endl;
     }
@@ -465,15 +461,15 @@ class ColorSampling
     float avg_u_, avg_v_;
 
     bool
-    toFilter (const pcl::PointXYZRGB &point)
+    ToFilter (const pcl::PointXYZRGB &point)
     {
       float u, v;
       RGBtoYUV (point, u, v);
       float distance = sqrt (pow (u - avg_u_, 2) + pow (v - avg_v_, 2));
       if (distance < filter_intensity)
-        return false;
+        return (false);
       else
-        return true;
+        return (true);
     }
 
     void
@@ -487,7 +483,7 @@ class ColorSampling
 };
 
 pcl::PointCloud<pcl::PointNormal>::Ptr
-subsampleAndCalculateNormals (pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
+SubsampleAndCalculateNormals (pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
 {
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_subsampled (new pcl::PointCloud<pcl::PointXYZ> ());
   pcl::VoxelGrid < pcl::PointXYZ > subsampling_filter;
@@ -507,7 +503,7 @@ subsampleAndCalculateNormals (pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
   concatenateFields (*cloud_subsampled, *cloud_subsampled_normals, *cloud_subsampled_with_normals);
 
   PCL_INFO ("Cloud dimensions before / after subsampling: %u / %u\n", cloud->points.size (), cloud_subsampled->points.size ());
-  return cloud_subsampled_with_normals;
+  return (cloud_subsampled_with_normals);
 }
 
 template<class T, class Estimator>
@@ -517,23 +513,23 @@ class KeyDes
     typedef pcl::PointCloud<T> PD;
     typedef pcl::PointCloud<PointType> P;
     typedef pcl::PointCloud<NormalType> PN;
-    typename PD::Ptr model_descriptors;
-    typename PD::Ptr scene_descriptors;
-    typename P::Ptr model;
-    typename P::Ptr model_keypoints;
-    typename P::Ptr scene;
-    typename P::Ptr scene_keypoints;
-    typename PN::Ptr model_normals;
-    typename PN::Ptr scene_normals;
+    typename PD::Ptr model_descriptors_;
+    typename PD::Ptr scene_descriptors_;
+    typename P::Ptr model_;
+    typename P::Ptr model_keypoints_;
+    typename P::Ptr scene_;
+    typename P::Ptr scene_keypoints_;
+    typename PN::Ptr model_normals_;
+    typename PN::Ptr scene_normals_;
     bool created;
 
     KeyDes (P::Ptr model, P::Ptr model_keypoints, P::Ptr scene, P::Ptr scene_keypoints, PN::Ptr model_normals, PN::Ptr scene_normals) :
-        model_descriptors (new PD ()), scene_descriptors (new PD ()), model (model), model_keypoints (model_keypoints), scene (scene), scene_keypoints (scene_keypoints), model_normals (model_normals), scene_normals (scene_normals), created (false)
+        model_descriptors_ (new PD ()), scene_descriptors_ (new PD ()), model_ (model), model_keypoints_ (model_keypoints), scene_ (scene), scene_keypoints_ (scene_keypoints), model_normals_ (model_normals), scene_normals_ (scene_normals), created (false)
     {
     }
 
     pcl::CorrespondencesPtr
-    run ()
+    Run ()
     {
 
       pcl::CorrespondencesPtr model_scene_corrs (new pcl::Correspondences ());
@@ -541,45 +537,45 @@ class KeyDes
       //create scene descriptors
       std::cout << "calculating scene descriptors " << std::endl;
       Estimator est;
-      est.setInputCloud (scene_keypoints);
-      est.setSearchSurface (scene);
-      est.setInputNormals (scene_normals);
+      est.setInputCloud (scene_keypoints_);
+      est.setSearchSurface (scene_);
+      est.setInputNormals (scene_normals_);
 
       pcl::search::KdTree<pcl::PointXYZRGB>::Ptr tree (new pcl::search::KdTree<pcl::PointXYZRGB>);
       est.setSearchMethod (tree);
       est.setRadiusSearch (descr_rad);
-      est.compute (*scene_descriptors);
+      est.compute (*scene_descriptors_);
 
       if (!created)
       {
         //create model descriptors
         std::cout << "calculating model descriptors " << std::endl;
-        est.setInputCloud (model_keypoints);
-        est.setSearchSurface (model);
-        est.setInputNormals (model_normals);
+        est.setInputCloud (model_keypoints_);
+        est.setSearchSurface (model_);
+        est.setInputNormals (model_normals_);
         pcl::search::KdTree<pcl::PointXYZRGB>::Ptr tree2 (new pcl::search::KdTree<pcl::PointXYZRGB>);
         est.setSearchMethod (tree2);
-        est.compute (*model_descriptors);
+        est.compute (*model_descriptors_);
         created = true;
       }
 
       pcl::KdTreeFLANN<T> match_search;
-      //std::cout <<"calculated " << model_descriptors->size() << " for the model and " << scene_descriptors->size() << " for the scene" <<std::endl;
+      //std::cout <<"calculated " << model_descriptors_->size() << " for the model and " << scene_descriptors_->size() << " for the scene" <<std::endl;
 
       //  Find Model-Scene Correspondences with KdTree
       std::cout << "calculating correspondences " << std::endl;
 
-      match_search.setInputCloud (model_descriptors);
+      match_search.setInputCloud (model_descriptors_);
 
       //  For each scene keypoint descriptor, find nearest neighbor into the model keypoints descriptor cloud and add it to the correspondences vector.
 #pragma omp parallel for 
-      for (size_t i = 0; i < scene_descriptors->size (); ++i)
+      for (size_t i = 0; i < scene_descriptors_->size (); ++i)
       {
         std::vector<int> neigh_indices (1);
         std::vector<float> neigh_sqr_dists (1);
-        if (match_search.point_representation_->isValid (scene_descriptors->at (i)))
+        if (match_search.point_representation_->isValid (scene_descriptors_->at (i)))
         {
-          int found_neighs = match_search.nearestKSearch (scene_descriptors->at (i), 1, neigh_indices, neigh_sqr_dists);
+          int found_neighs = match_search.nearestKSearch (scene_descriptors_->at (i), 1, neigh_indices, neigh_sqr_dists);
           if (found_neighs == 1 && neigh_sqr_dists[0] < descriptor_distance)
           {
             pcl::Correspondence corr (neigh_indices[0], static_cast<int> (i), neigh_sqr_dists[0]);
@@ -590,13 +586,13 @@ class KeyDes
       }
       /*
        pcl::registration::CorrespondenceRejectorSampleConsensus<PointType> rejector;
-       rejector.setInputSource(model);
-       rejector.setInputTarget(scene);
-       rejector.setInputCorrespondences(model_scene_corrs);
-       rejector.getCorrespondences(*model_scene_corrs);
+       rejector.setInputSource(model_);
+       rejector.setInputTarget(scene_);
+       rejector.setInputCorrespondences(model_scene_corrs_);
+       rejector.getCorrespondences(*model_scene_corrs_);
        */
       std::cout << "\tFound " << model_scene_corrs->size () << " correspondences " << std::endl;
-      return model_scene_corrs;
+      return (model_scene_corrs);
 
     }
 };
@@ -605,99 +601,98 @@ class Ppfe
 {
   public:
 
-    pcl::SACSegmentation<pcl::PointXYZ> seg;
-    pcl::ExtractIndices<pcl::PointXYZ> extract;
+    pcl::SACSegmentation<pcl::PointXYZ> seg_;
+    pcl::ExtractIndices<pcl::PointXYZ> extract_;
     pcl::PointCloud<pcl::PointXYZ>::Ptr model_xyz_;
-    pcl::ModelCoefficients::Ptr coefficients;
-    pcl::PointIndices::Ptr inliers;
-    pcl::PointCloud<pcl::PointNormal>::Ptr cloud_model_input;
-    pcl::PointCloud<pcl::PPFSignature>::Ptr cloud_model_ppf;
-    pcl::PPFRegistration<pcl::PointNormal, pcl::PointNormal> ppf_registration;
-
-    pcl::PPFHashMapSearch::Ptr hashmap_search;
-    unsigned nr_points;
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_scene;
-    pcl::PointCloud<pcl::PointNormal>::Ptr cloud_scene_input;
-    pcl::PointCloud<pcl::PointNormal> cloud_output_subsampled;
-    Eigen::Matrix4f mat;
-    ClusterType cluster;
+    pcl::ModelCoefficients::Ptr coefficients_;
+    pcl::PointIndices::Ptr inliers_;
+    pcl::PointCloud<pcl::PointNormal>::Ptr cloud_model_input_;
+    pcl::PointCloud<pcl::PPFSignature>::Ptr cloud_model_ppf_;
+    pcl::PPFRegistration<pcl::PointNormal, pcl::PointNormal> ppf_registration_;
+    pcl::PPFHashMapSearch::Ptr hashmap_search_;
+    unsigned nr_points_;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_scene_;
+    pcl::PointCloud<pcl::PointNormal>::Ptr cloud_scene_input_;
+    pcl::PointCloud<pcl::PointNormal> cloud_output_subsampled_;
+    Eigen::Matrix4f mat_;
+    ClusterType cluster_;
 
     Ppfe (pcl::PointCloud<PointType>::Ptr model)
     {
 
-      hashmap_search = boost::make_shared < pcl::PPFHashMapSearch > (12.0f / 180.0f * float (M_PI), 0.05f);
-      cloud_model_ppf = boost::make_shared<pcl::PointCloud<pcl::PPFSignature>> ();
-      inliers = boost::make_shared<pcl::PointIndices> ();
+      hashmap_search_ = boost::make_shared < pcl::PPFHashMapSearch > (12.0f / 180.0f * float (M_PI), 0.05f);
+      cloud_model_ppf_ = boost::make_shared<pcl::PointCloud<pcl::PPFSignature>> ();
+      inliers_ = boost::make_shared<pcl::PointIndices> ();
       model_xyz_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>> ();
       copyPointCloud (*model, *model_xyz_);
-      coefficients = boost::make_shared<pcl::ModelCoefficients> ();
-      cloud_scene = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>> ();
-      seg.setOptimizeCoefficients (true);
-      seg.setModelType (pcl::SACMODEL_PLANE);
-      seg.setMethodType (pcl::SAC_RANSAC);
-      seg.setMaxIterations (sac_seg_iter);
-      extract.setNegative (true);
-      ppf_registration.setSceneReferencePointSamplingRate (reg_sampling_rate);  //10
-      ppf_registration.setPositionClusteringThreshold (reg_clustering_threshold);  //0.2f
-      ppf_registration.setRotationClusteringThreshold (30.0f / 180.0f * float (M_PI));
-      cloud_model_input = subsampleAndCalculateNormals (model_xyz_);
+      coefficients_ = boost::make_shared<pcl::ModelCoefficients> ();
+      cloud_scene_ = boost::make_shared<pcl::PointCloud<pcl::PointXYZ>> ();
+      seg_.setOptimizeCoefficients (true);
+      seg_.setModelType (pcl::SACMODEL_PLANE);
+      seg_.setMethodType (pcl::SAC_RANSAC);
+      seg_.setMaxIterations (sac_seg_iter);
+      extract_.setNegative (true);
+      ppf_registration_.setSceneReferencePointSamplingRate (reg_sampling_rate);  //10
+      ppf_registration_.setPositionClusteringThreshold (reg_clustering_threshold);  //0.2f
+      ppf_registration_.setRotationClusteringThreshold (30.0f / 180.0f * float (M_PI));
+      cloud_model_input_ = SubsampleAndCalculateNormals (model_xyz_);
       pcl::PPFEstimation < pcl::PointNormal, pcl::PointNormal, pcl::PPFSignature > ppf_estimator;
-      ppf_estimator.setInputCloud (cloud_model_input);
-      ppf_estimator.setInputNormals (cloud_model_input);
-      ppf_estimator.compute (*cloud_model_ppf);
-      hashmap_search->setInputFeatureCloud (cloud_model_ppf);
-      ppf_registration.setSearchMethod (hashmap_search);
-      ppf_registration.setInputSource (cloud_model_input);
+      ppf_estimator.setInputCloud (cloud_model_input_);
+      ppf_estimator.setInputNormals (cloud_model_input_);
+      ppf_estimator.compute (*cloud_model_ppf_);
+      hashmap_search_->setInputFeatureCloud (cloud_model_ppf_);
+      ppf_registration_.setSearchMethod (hashmap_search_);
+      ppf_registration_.setInputSource (cloud_model_input_);
     }
 
     ClusterType
     GetCluster (pcl::PointCloud<PointType>::Ptr scene)
     {
-      seg.setDistanceThreshold (sac_seg_distance);
-      copyPointCloud (*scene, *cloud_scene);
-      nr_points = unsigned (cloud_scene->points.size ());
-      while (cloud_scene->points.size () > 0.3 * nr_points)
+      seg_.setDistanceThreshold (sac_seg_distance);
+      copyPointCloud (*scene, *cloud_scene_);
+      nr_points_ = unsigned (cloud_scene_->points.size ());
+      while (cloud_scene_->points.size () > 0.3 * nr_points_)
       {
-        seg.setInputCloud (cloud_scene);
-        seg.segment (*inliers, *coefficients);
-        PCL_INFO ("Plane inliers: %u\n", inliers->indices.size ());
-        if (inliers->indices.size () < max_inliers)
+        seg_.setInputCloud (cloud_scene_);
+        seg_.segmen (*inliers_, *coefficients_);
+        PCL_INFO ("Plane inliers: %u\n", inliers_->indices.size ());
+        if (inliers_->indices.size () < max_inliers)
           break;
-        extract.setInputCloud (cloud_scene);
-        extract.setIndices (inliers);
-        extract.filter (*cloud_scene);
+        extract_.setInputCloud (cloud_scene_);
+        extract_.setIndices (inliers_);
+        extract_.filter (*cloud_scene_);
       }
-      cloud_scene_input = subsampleAndCalculateNormals (cloud_scene);
+      cloud_scene_input_ = SubsampleAndCalculateNormals (cloud_scene_);
 
-      ppf_registration.setInputTarget (cloud_scene_input);
-      ppf_registration.align (cloud_output_subsampled);
+      ppf_registration_.setInputTarget (cloud_scene_input_);
+      ppf_registration_.align (cloud_output_subsampled_);
       // pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_output_subsampled_xyz (new pcl::PointCloud<pcl::PointXYZ> ());
-      //for (size_t i = 0; i < cloud_output_subsampled.points.size (); ++i)
-      //  cloud_output_subsampled_xyz->points.push_back ( pcl::PointXYZ (cloud_output_subsampled.points[i].x, cloud_output_subsampled.points[i].y, cloud_output_subsampled.points[i].z));
-      mat = ppf_registration.getFinalTransformation ();
+      //for (size_t i = 0; i < cloud_output_subsampled_.points.size (); ++i)
+      //  cloud_output_subsampled_xyz->points.push_back ( pcl::PointXYZ (cloud_output_subsampled_.points[i].x, cloud_output_subsampled_.points[i].y, cloud_output_subsampled_.points[i].z));
+      mat_ = ppf_registration_.getFinalTransformation ();
       std::vector < pcl::Correspondences > cor_tmp;
 
       std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix<float, 4, 4, 0, 4, 4>>>mat_tmp;
-      mat_tmp.push_back (mat);
-      ClusterType cluster = std::make_tuple (mat_tmp, cor_tmp);
-      inliers->indices.clear ();
-      return cluster;
+      mat_tmp.push_back (mat_);
+      ClusterType cluster_ = std::make_tuple (mat_tmp, cor_tmp);
+      inliers_->indices.clear ();
+      return (cluster_);
     }
 
     pcl::PointCloud<PointType>::Ptr
     GetModelKeypoints ()
     {
       pcl::PointCloud<PointType>::Ptr tmp (new pcl::PointCloud<PointType> ());
-      copyPointCloud (*cloud_model_input, *tmp);
-      return tmp;
+      copyPointCloud (*cloud_model_input_, *tmp);
+      return (tmp);
     }
 
     pcl::PointCloud<PointType>::Ptr
     GetSceneKeypoints ()
     {
       pcl::PointCloud<PointType>::Ptr tmp (new pcl::PointCloud<PointType> ());
-      copyPointCloud (*cloud_scene, *tmp);
-      return tmp;
+      copyPointCloud (*cloud_scene_, *tmp);
+      return (tmp);
     }
 
 };
@@ -705,7 +700,7 @@ class Ppfe
 class OpenniStreamer
 {
   public:
-    openni::Device device_;    // Software object for the physical device i.e.  
+    openni::Device device_;        // Software object for the physical device i.e.  
     openni::VideoStream ir_;       // IR VideoStream Class Object
     openni::VideoStream color_;    // Color VideoStream Class Object
     openni::Status rc_;
@@ -727,7 +722,7 @@ class OpenniStreamer
         std::cout << "Device initialization failed" << std::endl;
         device_.close ();
       }
-      rc_ = ir_.create (device_, openni::SENSOR_DEPTH);  // Create the VideoStream for IR
+      rc_ = ir_.create (device_, openni::SENSOR_DEPTH);    // Create the VideoStream for IR
 
       if (rc_ != openni::STATUS_OK)
       {
@@ -745,10 +740,11 @@ class OpenniStreamer
       }
       else
         std::cout << "Ir activation successful" << std::endl;
+
       device_.setImageRegistrationMode (openni::IMAGE_REGISTRATION_DEPTH_TO_COLOR);
 
       //ir.setImageRegistrationMode(ONI_IMAGE_REGISTRATION_DEPTH_TO_COLOR);
-      rc_ = color_.create (device_, openni::SENSOR_COLOR);  // Create the VideoStream for Color
+      rc_ = color_.create (device_, openni::SENSOR_COLOR);    // Create the VideoStream for Color
 
       if (rc_ != openni::STATUS_OK)
       {
@@ -773,26 +769,26 @@ class NormalEstimator
 {
   public:
 
-    pcl::NormalEstimationOMP<PointType, NormalType> norm_est;
+    pcl::NormalEstimationOMP<PointType, NormalType> norm_est_;
 
     NormalEstimator ()
     {
-      norm_est.setKSearch (10);
+      norm_est_.setKSearch (10);
     }
 
     NormalEstimator (int n_neighbours) :
         NormalEstimator ()
-    {  //c++11 standard
-      norm_est.setKSearch (n_neighbours);
+    {
+      norm_est_.setKSearch (n_neighbours);
     }
 
     pcl::PointCloud<NormalType>::Ptr
-    get_normals (pcl::PointCloud<PointType>::Ptr cloud)
+    Get_normals (pcl::PointCloud<PointType>::Ptr cloud)
     {
       pcl::PointCloud<NormalType>::Ptr normals (new pcl::PointCloud<NormalType> ());
-      norm_est.setInputCloud (cloud);
-      norm_est.compute (*normals);
-      return normals;
+      norm_est_.setInputCloud (cloud);
+      norm_est_.compute (*normals);
+      return (normals);
     }
 };
 
@@ -814,7 +810,7 @@ class DownSampler
     void
     SetSampleSize (float x, float y, float z)
     {
-      down_sampler_.setLeafSize (x, y, z);
+      down_sampler_.setLeafSiz (x, y, z);
     }
 
     void
@@ -896,30 +892,30 @@ class Sift
 class Harris
 {
   public:
-    pcl::HarrisKeypoint3D<PointType, pcl::PointXYZI>* harris3D;
+    pcl::HarrisKeypoint3D<PointType, pcl::PointXYZI>* harris3D_;
 
     Harris () :
-        harris3D (new pcl::HarrisKeypoint3D<PointType, pcl::PointXYZI> (pcl::HarrisKeypoint3D<PointType, pcl::PointXYZI>::HARRIS))
+        harris3D_ (new pcl::HarrisKeypoint3D<PointType, pcl::PointXYZI> (pcl::HarrisKeypoint3D<PointType, pcl::PointXYZI>::HARRIS))
     {
-      harris3D->setNonMaxSupression (true);
-      harris3D->setRadius (0.03);
-      harris3D->setRadiusSearch (0.03);
+      harris3D_->setNonMaxSupression (true);
+      harris3D_->setRadius (0.03);
+      harris3D_->setRadiusSearch (0.03);
       switch (harris_type)
       {
         default:
-          harris3D->setMethod (pcl::HarrisKeypoint3D<pcl::PointXYZRGB, pcl::PointXYZI>::HARRIS);
+          harris3D_->setMethod (pcl::HarrisKeypoint3D<pcl::PointXYZRGB, pcl::PointXYZI>::HARRIS);
           break;
         case 2:
-          harris3D->setMethod (pcl::HarrisKeypoint3D<pcl::PointXYZRGB, pcl::PointXYZI>::NOBLE);
+          harris3D_->setMethod (pcl::HarrisKeypoint3D<pcl::PointXYZRGB, pcl::PointXYZI>::NOBLE);
           break;
         case 3:
-          harris3D->setMethod (pcl::HarrisKeypoint3D<pcl::PointXYZRGB, pcl::PointXYZI>::LOWE);
+          harris3D_->setMethod (pcl::HarrisKeypoint3D<pcl::PointXYZRGB, pcl::PointXYZI>::LOWE);
           break;
         case 4:
-          harris3D->setMethod (pcl::HarrisKeypoint3D<pcl::PointXYZRGB, pcl::PointXYZI>::TOMASI);
+          harris3D_->setMethod (pcl::HarrisKeypoint3D<pcl::PointXYZRGB, pcl::PointXYZI>::TOMASI);
           break;
         case 5:
-          harris3D->setMethod (pcl::HarrisKeypoint3D<pcl::PointXYZRGB, pcl::PointXYZI>::CURVATURE);
+          harris3D_->setMethod (pcl::HarrisKeypoint3D<pcl::PointXYZRGB, pcl::PointXYZI>::CURVATURE);
           break;
       }
     }
@@ -927,9 +923,9 @@ class Harris
     void
     GetKeypoints (pcl::PointCloud<PointType>::Ptr cloud, pcl::PointCloud<PointType>::Ptr cloud_keypoints)
     {
-      harris3D->setInputCloud (cloud);
+      harris3D_->setInputCloud (cloud);
       pcl::PointCloud<pcl::PointXYZI>::Ptr keypoints_temp (new pcl::PointCloud<pcl::PointXYZI>);
-      harris3D->compute (*keypoints_temp);
+      harris3D_->compute (*keypoints_temp);
       copyPointCloud (*keypoints_temp, *cloud_keypoints);
     }
 };
@@ -938,7 +934,7 @@ template<class T>
 class Ransac
 {
   public:
-    std::vector<int> cloud_inliers;
+    std::vector<int> cloud_inliers_;
 
     void
     GetKeypoints (pcl::PointCloud<PointType>::Ptr cloud, pcl::PointCloud<PointType>::Ptr cloud_keypoints)
@@ -948,9 +944,9 @@ class Ransac
 
       pcl::RandomSampleConsensus < pcl::PointXYZRGB > model_ransac (cloud_plane);
       model_ransac.computeModel ();
-      model_ransac.getInliers (cloud_inliers);
+      model_ransac.getInliers (cloud_inliers_);
 
-      pcl::copyPointCloud < pcl::PointXYZRGB > (*cloud, cloud_inliers, *cloud_keypoints);
+      pcl::copyPointCloud < pcl::PointXYZRGB > (*cloud, cloud_inliers_, *cloud_keypoints);
     }
 
 };
@@ -958,8 +954,8 @@ class Ransac
 class Uniform
 {
   public:
-    pcl::UniformSampling<PointType> uniform_sampling;
-    pcl::PointCloud<int> sampled_indices;
+    pcl::UniformSampling<PointType> uniform_sampling_;
+    pcl::PointCloud<int> sampled_indices_;
     float cloud_ss_ = 0;
 
     void
@@ -973,10 +969,10 @@ class Uniform
     {
       if (cloud_ss_ != 0)
       {
-        uniform_sampling.setInputCloud (cloud);
-        uniform_sampling.setRadiusSearch (cloud_ss_);
-        uniform_sampling.compute (sampled_indices);
-        pcl::copyPointCloud (*cloud, sampled_indices.points, *cloud_keypoints);
+        uniform_sampling_.setInputCloud (cloud);
+        uniform_sampling_.setRadiusSearch (cloud_ss_);
+        uniform_sampling_.compute (sampled_indices_);
+        pcl::copyPointCloud (*cloud, sampled_indices_.points, *cloud_keypoints);
       }
       else
         std::cout << "no sampling size inserted" << std::endl;
@@ -987,18 +983,18 @@ class Uniform
 class Hough
 {
   public:
-    ClusterType cluster;
+    ClusterType cluster_;
     pcl::PointCloud<RFType>::Ptr model_rf_;
     pcl::PointCloud<RFType>::Ptr scene_rf_;
     pcl::BOARDLocalReferenceFrameEstimation<PointType, NormalType, RFType> rf_est_;
     pcl::Hough3DGrouping<PointType, PointType, RFType, RFType> clusterer_;
-    bool created;
+    bool created_;
 
     Hough () :
-        model_rf_ (new pcl::PointCloud<RFType> ()), scene_rf_ (new pcl::PointCloud<RFType> ()), created (false)
+        model_rf_ (new pcl::PointCloud<RFType> ()), scene_rf_ (new pcl::PointCloud<RFType> ()), created_ (false)
     {
       rf_est_.setFindHoles (true);
-      rf_est_.setRadiusSearch (rf_rad_);
+      rf_est_.setRadiusSearch (rf_rad);
       clusterer_.setHoughBinSize (cg_size);
       clusterer_.setHoughThreshold (cg_thresh);
       clusterer_.setUseInterpolation (true);
@@ -1014,7 +1010,7 @@ class Hough
       clusterer_.setHoughBinSize (cg_size);
       clusterer_.setHoughThreshold (cg_thresh);
       //  Compute (Keypoints) Reference Frames only for Hough
-      if (!created)
+      if (!created_)
       {
         rf_est_.setInputCloud (model_keypoints);
         rf_est_.setInputNormals (model_normals);
@@ -1032,11 +1028,11 @@ class Hough
       //std::cout << "computed hough BOARD on scene" <<std::endl;
 
       //  Clustering
-      if (!created)
+      if (!created_)
       {
         clusterer_.setInputCloud (model_keypoints);
         clusterer_.setInputRf (model_rf_);
-        created = true;
+        created_ = true;
       }
 
       clusterer_.setSceneCloud (scene_keypoints);
@@ -1045,9 +1041,9 @@ class Hough
 
       //std::cout << "prepared Hough for clustering" <<std::endl;
 
-      //clusterer_.cluster (clustered_corrs);
-      clusterer_.recognize (std::get < 0 > (cluster), std::get < 1 > (cluster));
-      return cluster;
+      //clusterer_.cluster_ (clustered_corrs);
+      clusterer_.recognize (std::get < 0 > (cluster_), std::get < 1 > (cluster_));
+      return (cluster_);
     }
 
 };
@@ -1056,7 +1052,7 @@ class GCG
 {
   public:
     pcl::GeometricConsistencyGrouping<PointType, PointType> gc_clusterer_;
-    ClusterType cluster;
+    ClusterType cluster_;
 
     GCG ()
     {
@@ -1072,9 +1068,9 @@ class GCG
       gc_clusterer_.setSceneCloud (scene_keypoints);
       gc_clusterer_.setModelSceneCorrespondences (model_scene_corrs);
 
-      //gc_clusterer_.cluster (clustered_corrs);
-      gc_clusterer_.recognize (std::get < 0 > (cluster), std::get < 1 > (cluster));
-      return cluster;
+      //gc_clusterer_.cluster_ (clustered_corrs);
+      gc_clusterer_.recognize (std::get < 0 > (cluster_), std::get < 1 > (cluster_));
+      return (cluster_);
 
     }
 };
@@ -1083,20 +1079,18 @@ template<class T, class TT>
 class ICPRegistration
 {
   public:
-    int count;
-    pcl::IterativeClosestPoint<T, TT> icp;
+    pcl::IterativeClosestPoint<T, TT> icp_;
 
     ICPRegistration ()
     {
       // Set the max correspondence distance to 5cm (e.g., correspondences with higher distances will be ignored)
-      icp.setMaxCorrespondenceDistance (0.05);
+      icp_.setMaxCorrespondenceDistance (0.05);
       // Set the maximum number of iterations (criterion 1)
-      icp.setMaximumIterations (20);
+      icp_.setMaximumIterations (20);
       // Set the transformation epsilon (criterion 2)
-      icp.setTransformationEpsilon (1e-18);
+      icp_.setTransformationEpsilon (1e-18);
       // Set the euclidean distance difference epsilon (criterion 3)
-      icp.setEuclideanFitnessEpsilon (1);
-      count = 0;
+      icp_.setEuclideanFitnessEpsilon (1);
     }
 
     void
@@ -1105,11 +1099,11 @@ class ICPRegistration
 
       typename pcl::PointCloud<T>::Ptr cloud_source_registered (new typename pcl::PointCloud<T> ());
 
-      icp.setInputSource (cloud_source);
-      icp.setInputTarget (cloud_target);
+      icp_.setInputSource (cloud_source);
+      icp_.setInputTarget (cloud_target);
 
       // Perform the alignment
-      icp.align (*cloud_source);
+      icp_.align (*cloud_source);
 
       // Obtain the transformation that aligned cloud_source to cloud_source_registered
       //transformation = icp.getFinalTransformation ();
@@ -1125,17 +1119,17 @@ class Visualizer
     pcl::visualization::PCLVisualizer viewer_;
     pcl::PointCloud<PointType>::Ptr off_scene_model_;
     pcl::PointCloud<PointType>::Ptr off_scene_model_keypoints_;
-    ICPRegistration<PointType, PointType> icp;
-    int iter;
-    bool clean;
-    std::stringstream ss_cloud;
-    std::stringstream ss_line;
-    std::vector<std::string> to_remove;
+    ICPRegistration<PointType, PointType> icp_;
+    int iter_;
+    bool clean_;
+    std::stringstream ss_cloud_;
+    std::stringstream ss_line_;
+    std::vector<std::string> to_remove_;
 
     Visualizer () :
-        off_scene_model_ (new pcl::PointCloud<PointType> ()), off_scene_model_keypoints_ (new pcl::PointCloud<PointType> ()), iter (0), clean (true)
+        off_scene_model_ (new pcl::PointCloud<PointType> ()), off_scene_model_keypoints_ (new pcl::PointCloud<PointType> ()), iter_ (0), clean_ (true)
     {
-      viewer_.registerKeyboardCallback (keyboardEventOccurred);
+      viewer_.registerKeyboardCallback (KeyboardEventOccurred);
 
     }
 
@@ -1143,12 +1137,12 @@ class Visualizer
     Visualize (pcl::PointCloud<PointType>::Ptr model, pcl::PointCloud<PointType>::Ptr model_keypoints, pcl::PointCloud<PointType>::Ptr scene, pcl::PointCloud<PointType>::Ptr scene_keypoints, ClusterType cluster, pcl::PointCloud<PointType>::Ptr filtered_scene)
     {
 
-      if (!clean)
+      if (!clean_)
       {
-        for (auto s : to_remove)
+        for (auto s : to_remove_)
           viewer_.removeShape (s);
-        clean = true;
-        to_remove.clear ();
+        clean_ = true;
+        to_remove_.clear ();
       }
       //SetViewPoint(scene);
       pcl::transformPointCloud (*model, *off_scene_model_, Eigen::Vector3f (-1, 0, 0), Eigen::Quaternionf (1, 0, 0, 0));
@@ -1156,7 +1150,7 @@ class Visualizer
       {
         scene = filtered_scene;
       }
-      if (iter == 0)
+      if (iter_ == 0)
       {
         SetViewPoint (off_scene_model_);
         viewer_.addPointCloud (off_scene_model_, "off_scene_model_");
@@ -1171,46 +1165,46 @@ class Visualizer
       {
         pcl::visualization::PointCloudColorHandlerCustom<PointType> scene_keypoints_color_handler (scene_keypoints, 0, 0, 255);
         SetViewPoint (scene_keypoints);
-        if (iter == 0)
+        if (iter_ == 0)
           viewer_.addPointCloud (scene_keypoints, scene_keypoints_color_handler, "scene_keypoints");
         else
           viewer_.updatePointCloud (scene_keypoints, scene_keypoints_color_handler, "scene_keypoints");
         viewer_.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 5, "scene_keypoints");
 
-        pcl::visualization::PointCloudColorHandlerCustom<PointType> off_scene_model_keypoints__color_handler (off_scene_model_keypoints_, 0, 0, 255);
+        pcl::visualization::PointCloudColorHandlerCustom<PointType> off_scene_model_keypoints_color_handler (off_scene_model_keypoints_, 0, 0, 255);
         SetViewPoint (off_scene_model_keypoints_);
-        if (iter == 0)
-          viewer_.addPointCloud (off_scene_model_keypoints_, off_scene_model_keypoints__color_handler, "off_scene_model_keypoints_");
+        if (iter_ == 0)
+          viewer_.addPointCloud (off_scene_model_keypoints_, off_scene_model_keypoints_color_handler, "off_scene_model_keypoints_");
         else
-          viewer_.updatePointCloud (off_scene_model_keypoints_, off_scene_model_keypoints__color_handler, "off_scene_model_keypoints_");
+          viewer_.updatePointCloud (off_scene_model_keypoints_, off_scene_model_keypoints_color_handler, "off_scene_model_keypoints_");
         viewer_.setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 5, "off_scene_model_keypoints_");
       }
 
       for (size_t i = 0; i < std::get < 0 > (cluster).size (); ++i)
       {
-        clean = false;
+        clean_ = false;
         pcl::PointCloud<PointType>::Ptr rotated_model (new pcl::PointCloud<PointType> ());
         pcl::transformPointCloud (*model, *rotated_model, std::get < 0 > (cluster)[i]);
         if (use_icp)
         {
-          icp.Align (rotated_model, filtered_scene);
+          icp_.Align (rotated_model, filtered_scene);
           //pcl::transformPointCloud (*rotated_model, *rotated_model, transformation);
         }
         SetViewPoint (rotated_model);
 
-        ss_cloud << "instance" << i;
-        to_remove.push_back (ss_cloud.str ());
+        ss_cloud_ << "instance" << i;
+        to_remove_.push_back (ss_cloud_.str ());
 
         pcl::visualization::PointCloudColorHandlerCustom<PointType> rotated_model_color_handler (rotated_model, 255, 0, 0);
 
-        viewer_.addPointCloud (rotated_model, rotated_model_color_handler, ss_cloud.str ());
+        viewer_.addPointCloud (rotated_model, rotated_model_color_handler, ss_cloud_.str ());
 
         //  We are drawing a line for each pair of clustered correspondences found between the model and the scene
         if (show_correspondences)
         {
           for (size_t j = 0; j < std::get < 1 > (cluster)[i].size (); ++j)
           {
-            ss_line << "correspondence_line" << i << "_" << j << "_" << iter;
+            ss_line_ << "correspondence_line" << i << "_" << j << "_" << iter_;
             float model_x = off_scene_model_keypoints_->at (std::get < 1 > (cluster)[i][j].index_query).x;
             float model_y = off_scene_model_keypoints_->at (std::get < 1 > (cluster)[i][j].index_query).y;
             float model_z = off_scene_model_keypoints_->at (std::get < 1 > (cluster)[i][j].index_query).z;
@@ -1227,13 +1221,13 @@ class Visualizer
             tmp2 = transformation._transformVector (tmp2);
             pcl::PointXYZ scene_point (tmp2.x (), tmp2.y (), tmp2.z ());
 
-            viewer_.addLine<pcl::PointXYZ, pcl::PointXYZ> (model_point, scene_point, 0, 255, 0, ss_line.str ());
-            to_remove.push_back (ss_line.str ());
+            viewer_.addLine<pcl::PointXYZ, pcl::PointXYZ> (model_point, scene_point, 0, 255, 0, ss_line_.str ());
+            to_remove_.push_back (ss_line_.str ());
           }
         }
       }
       viewer_.spinOnce ();
-      iter++;
+      iter_++;
     }
 };
 
