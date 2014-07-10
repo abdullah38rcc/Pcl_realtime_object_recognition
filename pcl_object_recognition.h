@@ -5,6 +5,9 @@ typedef pcl::PointXYZRGB PointType;
 typedef pcl::Normal NormalType;
 typedef pcl::ReferenceFrame RFType;
 typedef std::tuple<std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f> >, std::vector<pcl::Correspondences>> ClusterType;
+typedef std::tuple<float, float> error;
+std::clock_t init;
+
 
 const Eigen::Vector4f subsampling_leaf_size (0.01f, 0.01f, 0.01f, 0.0f);
 
@@ -55,6 +58,7 @@ bool show_filtered (false);
 bool remove_outliers (false);
 bool use_icp (false);
 bool segment (false);
+bool error_log(false);
 
 void
 ShowHelp (char *file_name)
@@ -74,6 +78,7 @@ ShowHelp (char *file_name)
   std::cout << "     -filter                            Filter the cloud by color leaving only the points which are close to the model color." << std::endl;
   std::cout << "     -remove_outliers                   Remove ouliers from the scene." << std::endl;
   std::cout << "     -segment                           Segments the objects in the scene removing the major plane." << std::endl;
+  std::cout << "     -log                               Saves the pose estimation error in a file called pose_error. " << std::endl;
   std::cout << "     --filter_intensity val             Max distance between colors normalized between 0 and 1 (default 0.02)" << std::endl;
   std::cout << "     --descriptor_distance val          Descriptor max distance to be a match (default 0.25)" << std::endl;
   std::cout << "     --algorithm (hough|gc)             Clustering algorithm used (default Hough)." << std::endl;
@@ -126,6 +131,8 @@ parseCommandLine (int argc, char *argv[])
     remove_outliers = true;
   if (pcl::console::find_switch (argc, argv, "-segment"))
     segment = true;
+  if (pcl::console::find_switch (argc, argv, "-log"))
+    error_log = true;
 
   std::string used_algorithm;
   if (pcl::console::parse_argument (argc, argv, "--algorithm", used_algorithm) != -1)
@@ -506,6 +513,62 @@ SubsampleAndCalculateNormals (pcl::PointCloud<pcl::PointXYZ>::Ptr cloud)
   return (cloud_subsampled_with_normals);
 }
 
+error
+GetRototraslationError (const Eigen::Matrix4f transformation)
+{
+  Eigen::Matrix3f rotation;
+  Eigen::Vector3f traslation;
+  float rotation_error;
+  float traslation_error;
+  error e;
+  Eigen::Matrix3f id;
+  id.Identity();
+
+  rotation << transformation(0,0), transformation(0,1), transformation(0,2),
+              transformation(1,0), transformation(1,1), transformation(1,2),
+              transformation(2,0), transformation(2,1), transformation(2,2);  
+  traslation << transformation(0,3), transformation(1,3), transformation(2,3);
+
+  traslation_error = traslation.norm();
+  std::get < 1 > (e) = traslation_error;
+  std::cout << rotation << std::endl;
+
+  Eigen::Matrix3f tmp = id * rotation.transpose();
+  float theta = acos((tmp.trace() - 1) / 2);
+  rotation_error = ((theta / (2 * sin(theta) )) * ( tmp - tmp.transpose()) ).norm();
+  std::get < 0 > (e) = rotation_error;
+  std::cout << "theta: " << theta << " (theta / (2 * sin(theta) ) " << theta / (2 * sin(theta) ) << std::endl;
+  std::cout << tmp << std::endl;
+
+  return (e);
+}
+
+class ErrorWriter
+{
+public:
+  std::ofstream es_;
+
+  ErrorWriter() 
+  {
+    es_.open("pose_error.txt");
+  }
+
+  void 
+  WriteError(error e, float fitness)
+  { if( std::isnan(std::get < 0 > (e)))
+      WriteError(fitness);
+    else
+      es_ << std::get < 0 > (e) << " " << std::get < 1 > (e) << " " << double(std::clock() - init) / CLOCKS_PER_SEC << " " << fitness << std::endl;
+  }
+
+  void 
+  WriteError(float fitness)
+  {
+    es_ << "onf onf "  << double(std::clock() - init) / CLOCKS_PER_SEC << " " << fitness << std::endl;
+  }
+
+};
+
 template<class T, class Estimator>
 class KeyDes
 {
@@ -568,7 +631,7 @@ class KeyDes
       match_search.setInputCloud (model_descriptors_);
 
       //  For each scene keypoint descriptor, find nearest neighbor into the model keypoints descriptor cloud and add it to the correspondences vector.
-#pragma omp parallel for 
+      #pragma omp parallel for 
       for (size_t i = 0; i < scene_descriptors_->size (); ++i)
       {
         std::vector<int> neigh_indices (1);
@@ -579,7 +642,7 @@ class KeyDes
           if (found_neighs == 1 && neigh_sqr_dists[0] < descriptor_distance)
           {
             pcl::Correspondence corr (neigh_indices[0], static_cast<int> (i), neigh_sqr_dists[0]);
-#pragma omp critical
+            #pragma omp critical
             model_scene_corrs->push_back (corr);
           }
         }
@@ -858,7 +921,7 @@ class Narf
 
       cloud_keypoints->points.resize (cloud_keypoint_indices_.points.size ());
 
-#pragma omp parallel for
+      #pragma omp parallel for
       for (size_t i = 0; i < cloud_keypoint_indices_.points.size (); ++i)
         cloud_keypoints->points[i].getVector3fMap () = cloud_range_image_.points[cloud_keypoint_indices_.points[i]].getVector3fMap ();
     }
@@ -1081,6 +1144,11 @@ class ICPRegistration
   public:
     pcl::IterativeClosestPoint<T, TT> icp_;
     Eigen::Matrix4f transformation_;
+    Eigen::Matrix3f rotation_;
+    Eigen::Vector3f traslation_;
+    float fitness_score_;
+
+
 
     ICPRegistration ()
     {
@@ -1092,7 +1160,11 @@ class ICPRegistration
       icp_.setTransformationEpsilon (1e-8);
       // Set the euclidean distance difference epsilon (criterion 3)
       icp_.setEuclideanFitnessEpsilon (1);
-    }
+
+      fitness_score_ = 1;
+
+      transformation_.Identity();
+    }                 
 
     void
     Align (typename pcl::PointCloud<T>::Ptr cloud_source, typename pcl::PointCloud<TT>::Ptr cloud_target)
@@ -1108,9 +1180,7 @@ class ICPRegistration
 
       // Obtain the transformation that aligned cloud_source to cloud_source_registered
       transformation_ = icp_.getFinalTransformation ();
-
-      //std::cout << "TRANSFORMATION: " << std::endl;
-      //std::cout << transformation << std::endl;
+      fitness_score_ = icp_.getFitnessScore();
     }
 };
 
@@ -1123,6 +1193,7 @@ class Visualizer
     ICPRegistration<PointType, PointType> icp_;
     int iter_;
     bool clean_;
+    ErrorWriter e;
     std::stringstream ss_cloud_;
     std::stringstream ss_line_;
     std::vector<std::string> to_remove_;
@@ -1186,7 +1257,7 @@ class Visualizer
         clean_ = false;
         pcl::PointCloud<PointType>::Ptr rotated_model (new pcl::PointCloud<PointType> ());
         pcl::transformPointCloud (*model, *rotated_model, std::get < 0 > (cluster)[i]);
-        if (use_icp)
+        if (use_icp && filtered_scene->points.size() > 20)
         {
           icp_.Align (rotated_model, filtered_scene);
           //pcl::transformPointCloud (*rotated_model, *rotated_model, transformation);
@@ -1227,6 +1298,15 @@ class Visualizer
           }
         }
       }
+      if(error_log && use_icp)
+      {
+        if(icp_.fitness_score_ < 0.00065 )
+          e.WriteError(GetRototraslationError((icp_.transformation_)), icp_.fitness_score_);
+        else {
+          e.WriteError(icp_.fitness_score_);
+        }
+      }
+
       viewer_.spinOnce ();
       iter_++;
     }

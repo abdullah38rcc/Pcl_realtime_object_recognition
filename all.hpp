@@ -25,10 +25,6 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
-#include "OpenNI.h"
-#include <stdio.h>
-#include <iostream>
-#include "omp.h"
 #include <pcl/registration/ppf_registration.h>
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/segmentation/sac_segmentation.h>
@@ -46,4 +42,10 @@
 #include <pcl/features/impl/ppfrgb.hpp>
 #include <pcl/keypoints/harris_3d.h>
 #include <pcl/registration/correspondence_rejection_sample_consensus.h>
+#include "OpenNI.h"
+#include <stdio.h>
+#include <iostream>
+#include <fstream>
+#include "omp.h"
+#include <ctime>
 
