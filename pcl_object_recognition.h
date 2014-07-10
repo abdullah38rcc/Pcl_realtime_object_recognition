@@ -239,6 +239,20 @@ ShowKeyHelp ()
   std::cout << "Press k to increase filtering" << std::endl;
 }
 
+double frobeniusNorm(const Eigen::Matrix3f matrix)
+{
+    double result = 0.0;
+    for(unsigned int i = 0; i < 3; ++i)
+    {
+        for(unsigned int j = 0; j < 3; ++j)
+        {
+            double value = matrix(i, j);
+            result += value * value;
+        }
+    }
+    return sqrt(result);
+}
+
 void
 KeyboardEventOccurred (const pcl::visualization::KeyboardEvent &event)
 {
@@ -535,7 +549,7 @@ GetRototraslationError (const Eigen::Matrix4f transformation)
 
   Eigen::Matrix3f tmp = id * rotation.transpose();
   float theta = acos((tmp.trace() - 1) / 2);
-  rotation_error = ((theta / (2 * sin(theta) )) * ( tmp - tmp.transpose()) ).norm();
+  rotation_error = frobeniusNorm((theta / (2 * sin(theta) )) * ( tmp - tmp.transpose()) );
   std::get < 0 > (e) = rotation_error;
   std::cout << "theta: " << theta << " (theta / (2 * sin(theta) ) " << theta / (2 * sin(theta) ) << std::endl;
   std::cout << tmp << std::endl;
@@ -1194,12 +1208,13 @@ class Visualizer
     int iter_;
     bool clean_;
     ErrorWriter e;
+    int r, g;
     std::stringstream ss_cloud_;
     std::stringstream ss_line_;
     std::vector<std::string> to_remove_;
 
     Visualizer () :
-        off_scene_model_ (new pcl::PointCloud<PointType> ()), off_scene_model_keypoints_ (new pcl::PointCloud<PointType> ()), iter_ (0), clean_ (true)
+        off_scene_model_ (new pcl::PointCloud<PointType> ()), off_scene_model_keypoints_ (new pcl::PointCloud<PointType> ()), iter_ (0), clean_ (true), r(255), g(0)
     {
       viewer_.registerKeyboardCallback (KeyboardEventOccurred);
 
@@ -1267,7 +1282,7 @@ class Visualizer
         ss_cloud_ << "instance" << i;
         to_remove_.push_back (ss_cloud_.str ());
 
-        pcl::visualization::PointCloudColorHandlerCustom<PointType> rotated_model_color_handler (rotated_model, 255, 0, 0);
+        pcl::visualization::PointCloudColorHandlerCustom<PointType> rotated_model_color_handler (rotated_model, r, g, 0);
 
         viewer_.addPointCloud (rotated_model, rotated_model_color_handler, ss_cloud_.str ());
 
@@ -1300,9 +1315,16 @@ class Visualizer
       }
       if(error_log && use_icp)
       {
-        if(icp_.fitness_score_ < 0.00065 )
+        if(icp_.fitness_score_ < 0.00065 && filtered_scene->points.size() > 20)
+        {
+          g = 255;
+          r = 0;
           e.WriteError(GetRototraslationError((icp_.transformation_)), icp_.fitness_score_);
-        else {
+        }
+        else 
+        {
+          r = 255;
+          g = 0;
           e.WriteError(icp_.fitness_score_);
         }
       }
