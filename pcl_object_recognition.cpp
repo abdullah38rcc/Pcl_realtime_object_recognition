@@ -1,7 +1,6 @@
 #include "all.hpp"
 #include "pcl_object_recognition.h"
 
-
 int
 main (int argc, char** argv)
 {
@@ -83,9 +82,6 @@ main (int argc, char** argv)
     openni_streamer.rc_ = openni_streamer.ir_.readFrame (&irf);
     openni_streamer.rc_ = openni_streamer.color_.readFrame (&colorf);
     scene = grabber.get_point_cloud_openni2 (colorf, irf, distance, true);
-    std::cout << "begin before " << init << std::endl;
-    init = std::clock();
-    std::cout << "begin after " << init << std::endl;
 
     copyPointCloud (*scene, *complete_scene);
     if (segment)
@@ -216,7 +212,6 @@ main (int argc, char** argv)
     std::cout << "\tFound " << std::get < 0 > (cluster).size () << " model instance/instances " << std::endl;
 
     SetViewPoint (complete_scene);
-
 
     visualizer.Visualize (model_list[0], model_keypoints, complete_scene, scene_keypoints, cluster, scene);
   }
